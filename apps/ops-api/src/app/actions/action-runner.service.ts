@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
   ActionEvidence,
   ActionRunRequest,
@@ -143,6 +143,21 @@ type BackupLike = {
   };
 };
 
+type DeploymentRuntimeLike = {
+  readonly spec?: {
+    readonly template?: {
+      readonly spec?: {
+        readonly containers?: readonly {
+          readonly name?: string;
+          readonly image?: string;
+        }[];
+        readonly imagePullSecrets?: readonly { readonly name?: string }[];
+        readonly serviceAccountName?: string;
+      };
+    };
+  };
+};
+
 type ActionOutput = {
   readonly summary: string;
   readonly evidence: readonly ActionEvidence[];
@@ -157,6 +172,256 @@ type Captured<T> = {
 type DiagnosisProgress = (step: DiagnosisStepEvent) => Promise<void> | void;
 
 const DIAGNOSIS_STEP_SPREAD_MS = 300;
+const WORKSPACE_DB_URLS_SECRET = 'varlens-workspace-db-urls';
+
+const VARLENS_USER_CREATE_SCRIPT = String.raw`
+set -euo pipefail
+node <<'NODE'
+const { Client } = require('pg')
+
+function need(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(name + ' is required')
+  return value
+}
+function quoteIdent(value) {
+  return '"' + String(value).replace(/"/g, '""') + '"'
+}
+function quoteLiteral(value) {
+  return "'" + String(value).replace(/'/g, "''") + "'"
+}
+async function main() {
+  const host = need('PGHOST')
+  const port = Number(process.env.PGPORT || '5432')
+  const user = process.env.PGUSER || process.env.POSTGRES_USER || 'postgres'
+  const password = need('PGPASSWORD')
+  const dbName = need('VARLENS_OPS_DB_NAME')
+  const ownerRole = need('VARLENS_OPS_OWNER_ROLE')
+  const migratorRole = need('VARLENS_OPS_MIGRATOR_ROLE')
+  const appRole = need('VARLENS_OPS_APP_ROLE')
+  const ownerPassword = need('VARLENS_OPS_OWNER_PASSWORD')
+  const migratorPassword = need('VARLENS_OPS_MIGRATOR_PASSWORD')
+  const appPassword = need('VARLENS_OPS_APP_PASSWORD')
+  const admin = new Client({ host, port, user, password, database: 'postgres' })
+  await admin.connect()
+  try {
+    await admin.query("SELECT pg_advisory_lock(hashtext('varlens-user-lifecycle'))")
+    for (const [role, rolePassword] of [
+      [ownerRole, ownerPassword],
+      [migratorRole, migratorPassword],
+      [appRole, appPassword],
+    ]) {
+      const exists = await admin.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role])
+      if (exists.rowCount) {
+        await admin.query('ALTER ROLE ' + quoteIdent(role) + ' PASSWORD ' + quoteLiteral(rolePassword))
+      } else {
+        await admin.query(
+          'CREATE ROLE ' + quoteIdent(role) + ' LOGIN PASSWORD ' + quoteLiteral(rolePassword)
+        )
+      }
+    }
+    await admin.query('GRANT ' + quoteIdent(ownerRole) + ' TO ' + quoteIdent(migratorRole))
+    const db = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName])
+    if (!db.rowCount) {
+      await admin.query('CREATE DATABASE ' + quoteIdent(dbName) + ' OWNER ' + quoteIdent(ownerRole))
+    }
+    await admin.query('REVOKE ALL PRIVILEGES ON DATABASE ' + quoteIdent(dbName) + ' FROM PUBLIC')
+    await admin.query(
+      'GRANT CONNECT ON DATABASE ' + quoteIdent(dbName) + ' TO ' + quoteIdent(migratorRole) + ', ' + quoteIdent(appRole)
+    )
+  } finally {
+    await admin.query("SELECT pg_advisory_unlock(hashtext('varlens-user-lifecycle'))").catch(() => {})
+    await admin.end()
+  }
+
+  const workspace = new Client({ host, port, user, password, database: dbName })
+  await workspace.connect()
+  try {
+    await workspace.query('REVOKE ALL ON SCHEMA public FROM PUBLIC')
+    await workspace.query('GRANT USAGE, CREATE ON SCHEMA public TO ' + quoteIdent(migratorRole))
+    await workspace.query('GRANT USAGE ON SCHEMA public TO ' + quoteIdent(appRole))
+    await workspace.query(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE ' + quoteIdent(migratorRole) + ' IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ' + quoteIdent(appRole)
+    )
+    await workspace.query(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE ' + quoteIdent(migratorRole) + ' IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ' + quoteIdent(appRole)
+    )
+  } finally {
+    await workspace.end()
+  }
+}
+main().catch((error) => {
+  console.error(JSON.stringify({ ok: false, error: error.message }))
+  process.exit(1)
+})
+NODE
+
+VARLENS_PG_URL="$VARLENS_PRIVATE_MIGRATOR_PG_URL" node out/web/migrate-db.cjs
+
+control_url="$VARLENS_CONTROL_STATE_PG_URL"
+if [ -z "$control_url" ]; then
+  control_url="$VARLENS_PG_URL"
+fi
+if [ -z "$control_url" ]; then
+  echo '{"ok":false,"error":"control database URL missing"}' >&2
+  exit 1
+fi
+VARLENS_PG_URL="$control_url" node out/web/provision-user.cjs \
+  --username "$VARLENS_OPS_USERNAME" \
+  --display-name "$VARLENS_OPS_DISPLAY_NAME" \
+  --created-by "$VARLENS_OPS_CREATED_BY" \
+  --password-file /var/run/varlens/ops-user/password \
+  --private-db-secret-ref "$VARLENS_OPS_SECRET_REF"
+
+node <<'NODE'
+const { Client } = require('pg')
+function need(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(name + ' is required')
+  return value
+}
+function quoteIdent(value) {
+  return '"' + String(value).replace(/"/g, '""') + '"'
+}
+async function main() {
+  const client = new Client({
+    connectionString: need('VARLENS_PRIVATE_MIGRATOR_PG_URL'),
+  })
+  await client.connect()
+  try {
+    const appRole = need('VARLENS_OPS_APP_ROLE')
+    const migratorRole = need('VARLENS_OPS_MIGRATOR_ROLE')
+    await client.query(
+      'GRANT USAGE ON SCHEMA varlens_audit TO ' + quoteIdent(appRole)
+    ).catch(() => {})
+    await client.query(
+      'GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA varlens_audit TO ' + quoteIdent(appRole)
+    ).catch(() => {})
+    await client.query(
+      'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA varlens_audit TO ' + quoteIdent(appRole)
+    ).catch(() => {})
+    await client.query(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE ' + quoteIdent(migratorRole) + ' IN SCHEMA varlens_audit GRANT INSERT, SELECT ON TABLES TO ' + quoteIdent(appRole)
+    ).catch(() => {})
+    await client.query(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE ' + quoteIdent(migratorRole) + ' IN SCHEMA varlens_audit GRANT USAGE, SELECT ON SEQUENCES TO ' + quoteIdent(appRole)
+    ).catch(() => {})
+  } finally {
+    await client.end()
+  }
+}
+main().catch((error) => {
+  console.error(JSON.stringify({ ok: false, error: error.message }))
+  process.exit(1)
+})
+NODE
+`;
+
+const VARLENS_USER_BLOCK_SCRIPT = String.raw`
+set -euo pipefail
+node <<'NODE'
+const { Client } = require('pg')
+async function main() {
+  const username = process.env.VARLENS_OPS_USERNAME
+  const url = process.env.VARLENS_CONTROL_STATE_PG_URL || process.env.VARLENS_PG_URL
+  if (!username || !url) throw new Error('username/control URL missing')
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  try {
+    const existing = await client.query(
+      'SELECT id, role FROM public.users WHERE username = $1',
+      [username]
+    )
+    if (!existing.rowCount) throw new Error('User not found: ' + username)
+    if (existing.rows[0].role === 'admin') throw new Error('Cannot block an admin user')
+    await client.query(
+      "UPDATE public.users SET is_active = FALSE, private_db_status = CASE WHEN private_db_status = 'active' THEN 'disabled' ELSE private_db_status END, updated_at = now() WHERE username = $1",
+      [username]
+    )
+    console.log(JSON.stringify({ ok: true, username, action: 'blocked' }))
+  } finally {
+    await client.end()
+  }
+}
+main().catch((error) => {
+  console.error(JSON.stringify({ ok: false, error: error.message }))
+  process.exit(1)
+})
+NODE
+`;
+
+const VARLENS_USER_PRUNE_SCRIPT = String.raw`
+set -euo pipefail
+node <<'NODE'
+const { Client } = require('pg')
+function need(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(name + ' is required')
+  return value
+}
+function quoteIdent(value) {
+  return '"' + String(value).replace(/"/g, '""') + '"'
+}
+async function main() {
+  const username = need('VARLENS_OPS_USERNAME')
+  const dbName = need('VARLENS_OPS_DB_NAME')
+  const ownerRole = need('VARLENS_OPS_OWNER_ROLE')
+  const migratorRole = need('VARLENS_OPS_MIGRATOR_ROLE')
+  const appRole = need('VARLENS_OPS_APP_ROLE')
+  const controlUrl = process.env.VARLENS_CONTROL_STATE_PG_URL || process.env.VARLENS_PG_URL
+  if (!controlUrl) throw new Error('control database URL missing')
+
+  const control = new Client({ connectionString: controlUrl })
+  await control.connect()
+  try {
+    await control.query('BEGIN')
+    const existing = await control.query(
+      'SELECT id, role FROM public.users WHERE username = $1 FOR UPDATE',
+      [username]
+    )
+    if (!existing.rowCount) throw new Error('User not found: ' + username)
+    if (existing.rows[0].role === 'admin') throw new Error('Cannot prune an admin user')
+    const id = existing.rows[0].id
+    await control.query('UPDATE public.users SET created_by = NULL WHERE created_by = $1', [id])
+    await control.query('DELETE FROM public.users WHERE id = $1', [id])
+    await control.query('COMMIT')
+  } catch (error) {
+    await control.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    await control.end()
+  }
+
+  const admin = new Client({
+    host: need('PGHOST'),
+    port: Number(process.env.PGPORT || '5432'),
+    user: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
+    password: need('PGPASSWORD'),
+    database: 'postgres',
+  })
+  await admin.connect()
+  try {
+    await admin.query("SELECT pg_advisory_lock(hashtext('varlens-user-lifecycle'))")
+    await admin.query(
+      'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+      [dbName]
+    )
+    await admin.query('DROP DATABASE IF EXISTS ' + quoteIdent(dbName))
+    for (const role of [appRole, migratorRole, ownerRole]) {
+      await admin.query('DROP ROLE IF EXISTS ' + quoteIdent(role))
+    }
+    console.log(JSON.stringify({ ok: true, username, action: 'pruned' }))
+  } finally {
+    await admin.query("SELECT pg_advisory_unlock(hashtext('varlens-user-lifecycle'))").catch(() => {})
+    await admin.end()
+  }
+}
+main().catch((error) => {
+  console.error(JSON.stringify({ ok: false, error: error.message }))
+  process.exit(1)
+})
+NODE
+`;
 
 @Injectable()
 export class ActionRunnerService {
@@ -441,6 +706,12 @@ export class ActionRunnerService {
         return this.escalationBundle(target, contract, inputs, principal);
       case 'argo-sync':
         return this.argoSync(target, contract);
+      case 'varlens-user-create':
+        return this.varlensUserCreate(target, inputs, principal);
+      case 'varlens-user-block':
+        return this.varlensUserBlock(target, inputs, principal);
+      case 'varlens-user-prune':
+        return this.varlensUserPrune(target, inputs, principal);
       case 'rollout-restart':
         if (!contract.workload.statelessRestartAllowed) {
           throw new BadRequestException(
@@ -455,6 +726,274 @@ export class ActionRunnerService {
       default:
         throw new BadRequestException(`action is not implemented: ${actionId}`);
     }
+  }
+
+  private async varlensUserCreate(
+    target: TargetConfig,
+    inputs: Record<string, string>,
+    principal: OpsPrincipal,
+  ): Promise<ActionOutput> {
+    const username = validateVarLensUsername(inputs.username);
+    const displayName = validateRequired(inputs.displayName, 'displayName');
+    const initialPassword = validateRequired(
+      inputs.initialPassword,
+      'initialPassword',
+    );
+    if (initialPassword.length < 8) {
+      throw new BadRequestException('Initiales Passwort ist zu kurz.');
+    }
+
+    const plan = varlensUserDbPlan(username);
+    const ownerPassword = generatedPassword();
+    const migratorPassword = generatedPassword();
+    const appPassword = generatedPassword();
+    const appUrl = postgresUrl(plan.appRole, appPassword, plan.dbName);
+    const migratorUrl = postgresUrl(
+      plan.migratorRole,
+      migratorPassword,
+      plan.dbName,
+    );
+    const jobName = lifecycleJobName('create', username);
+    const credentialSecret = `${jobName}-credential`;
+
+    await this.kubernetes.applySecret(
+      target.namespace,
+      plan.secretName,
+      { [plan.secretRef]: appUrl },
+      varlensUserSecretLabels(target, username),
+    );
+    await this.kubernetes.patchSecret(target.namespace, WORKSPACE_DB_URLS_SECRET, {
+      metadata: { labels: varlensUserSecretLabels(target, username) },
+      stringData: { [plan.secretRef]: appUrl },
+    });
+    await this.kubernetes.applySecret(
+      target.namespace,
+      credentialSecret,
+      {
+        password: initialPassword,
+        privateMigratorUrl: migratorUrl,
+      },
+      varlensUserJobLabels(target, username, 'create'),
+    );
+
+    try {
+      await this.createVarLensLifecycleJob(target, {
+        jobName,
+        operation: 'create',
+        username,
+        actor: principal.user,
+        env: [
+          { name: 'VARLENS_OPS_USERNAME', value: username },
+          { name: 'VARLENS_OPS_DISPLAY_NAME', value: displayName },
+          { name: 'VARLENS_OPS_CREATED_BY', value: principal.user },
+          { name: 'VARLENS_OPS_DB_NAME', value: plan.dbName },
+          { name: 'VARLENS_OPS_OWNER_ROLE', value: plan.ownerRole },
+          { name: 'VARLENS_OPS_MIGRATOR_ROLE', value: plan.migratorRole },
+          { name: 'VARLENS_OPS_APP_ROLE', value: plan.appRole },
+          { name: 'VARLENS_OPS_OWNER_PASSWORD', value: ownerPassword },
+          { name: 'VARLENS_OPS_MIGRATOR_PASSWORD', value: migratorPassword },
+          { name: 'VARLENS_OPS_APP_PASSWORD', value: appPassword },
+          { name: 'VARLENS_OPS_SECRET_REF', value: plan.secretRef },
+        ],
+        secretName: credentialSecret,
+        script: VARLENS_USER_CREATE_SCRIPT,
+      });
+      const job = await this.waitForLifecycleJob(target, jobName, 180_000);
+      if (job.status?.failed) {
+        throw new Error(`Provisionierungs-Job ${jobName} ist fehlgeschlagen.`);
+      }
+    } finally {
+      await this.kubernetes.deleteSecret(target.namespace, credentialSecret);
+      await this.kubernetes.deleteJob(target.namespace, jobName);
+    }
+
+    return {
+      summary: `VarLens-Nutzer ${username} wurde mit eigener Workspace-Datenbank angelegt.`,
+      evidence: [
+        { label: 'Benutzer', value: username },
+        { label: 'Name', value: displayName },
+        { label: 'Workspace-Datenbank', value: plan.dbName },
+        { label: 'Status', value: 'aktiv; Passwortwechsel beim ersten Login' },
+      ],
+    };
+  }
+
+  private async varlensUserBlock(
+    target: TargetConfig,
+    inputs: Record<string, string>,
+    principal: OpsPrincipal,
+  ): Promise<ActionOutput> {
+    const username = validateVarLensUsername(inputs.username);
+    const jobName = lifecycleJobName('block', username);
+    await this.createVarLensLifecycleJob(target, {
+      jobName,
+      operation: 'block',
+      username,
+      actor: principal.user,
+      env: [{ name: 'VARLENS_OPS_USERNAME', value: username }],
+      script: VARLENS_USER_BLOCK_SCRIPT,
+    });
+    const job = await this.waitForLifecycleJob(target, jobName, 60_000);
+    await this.kubernetes.deleteJob(target.namespace, jobName);
+    if (job.status?.failed) {
+      throw new Error(`Sperr-Job ${jobName} ist fehlgeschlagen.`);
+    }
+    return {
+      summary: `VarLens-Nutzer ${username} wurde gesperrt.`,
+      evidence: [
+        { label: 'Benutzer', value: username },
+        { label: 'Login', value: 'gesperrt' },
+        { label: 'Workspace-Zuordnung', value: 'disabled' },
+      ],
+    };
+  }
+
+  private async varlensUserPrune(
+    target: TargetConfig,
+    inputs: Record<string, string>,
+    principal: OpsPrincipal,
+  ): Promise<ActionOutput> {
+    const username = validateVarLensUsername(inputs.username);
+    if (inputs.confirmUsername !== username) {
+      throw new BadRequestException(
+        'Bestätigung stimmt nicht mit dem Benutzernamen überein.',
+      );
+    }
+    const plan = varlensUserDbPlan(username);
+    const jobName = lifecycleJobName('prune', username);
+    await this.createVarLensLifecycleJob(target, {
+      jobName,
+      operation: 'prune',
+      username,
+      actor: principal.user,
+      env: [
+        { name: 'VARLENS_OPS_USERNAME', value: username },
+        { name: 'VARLENS_OPS_DB_NAME', value: plan.dbName },
+        { name: 'VARLENS_OPS_OWNER_ROLE', value: plan.ownerRole },
+        { name: 'VARLENS_OPS_MIGRATOR_ROLE', value: plan.migratorRole },
+        { name: 'VARLENS_OPS_APP_ROLE', value: plan.appRole },
+      ],
+      script: VARLENS_USER_PRUNE_SCRIPT,
+    });
+    const job = await this.waitForLifecycleJob(target, jobName, 120_000);
+    await this.kubernetes.deleteJob(target.namespace, jobName);
+    if (job.status?.failed) {
+      throw new Error(`Entfernungs-Job ${jobName} ist fehlgeschlagen.`);
+    }
+
+    await this.kubernetes.deleteSecret(target.namespace, plan.secretName);
+    await this.kubernetes.patchSecret(target.namespace, WORKSPACE_DB_URLS_SECRET, {
+      data: { [plan.secretRef]: null },
+    });
+
+    return {
+      summary: `VarLens-Nutzer ${username} und dessen Workspace-Datenbank wurden entfernt.`,
+      evidence: [
+        { label: 'Benutzer', value: username },
+        { label: 'Workspace-Datenbank', value: plan.dbName },
+        { label: 'Workspace-Secret', value: plan.secretName },
+        { label: 'Umfang', value: 'operational prune; keine Infra-Löschung' },
+      ],
+    };
+  }
+
+  private async createVarLensLifecycleJob(
+    target: TargetConfig,
+    options: {
+      readonly jobName: string;
+      readonly operation: 'create' | 'block' | 'prune';
+      readonly username: string;
+      readonly actor: string;
+      readonly env: readonly Record<string, unknown>[];
+      readonly script: string;
+      readonly secretName?: string;
+    },
+  ): Promise<void> {
+    await this.kubernetes.deleteJob(target.namespace, options.jobName);
+    const runtime = await this.kubernetes.getPath<DeploymentRuntimeLike>(
+      `/apis/apps/v1/namespaces/${target.namespace}/deployments/${target.deployment}`,
+    );
+    const podSpec = runtime.spec?.template?.spec;
+    const image = podSpec?.containers?.find((container) =>
+      ['varlens', target.serviceName].includes(container.name || ''),
+    )?.image;
+    if (!image) {
+      throw new Error('VarLens-Image konnte nicht aus dem Deployment gelesen werden.');
+    }
+
+    await this.kubernetes.createJob(target.namespace, {
+      apiVersion: 'batch/v1',
+      kind: 'Job',
+      metadata: {
+        name: options.jobName,
+        labels: varlensUserJobLabels(target, options.username, options.operation),
+        annotations: {
+          'ops.robspan.net/created-by': options.actor,
+          'ops.robspan.net/created-at': new Date().toISOString(),
+        },
+      },
+      spec: {
+        backoffLimit: 0,
+        ttlSecondsAfterFinished: 600,
+        template: {
+          metadata: {
+            labels: varlensUserJobLabels(target, options.username, options.operation),
+          },
+          spec: {
+            restartPolicy: 'Never',
+            serviceAccountName: podSpec?.serviceAccountName || target.serviceName,
+            imagePullSecrets: podSpec?.imagePullSecrets || [],
+            containers: [
+              {
+                name: 'varlens-user-lifecycle',
+                image,
+                command: ['/usr/bin/tini', '--', '/usr/bin/bash', '-lc'],
+                args: [options.script],
+                env: [
+                  ...varlensRuntimeEnv(options.secretName),
+                  ...options.env,
+                ],
+                volumeMounts: options.secretName
+                  ? [
+                      {
+                        name: 'varlens-ops-user-credential',
+                        mountPath: '/var/run/varlens/ops-user',
+                        readOnly: true,
+                      },
+                    ]
+                  : [],
+                securityContext: {
+                  allowPrivilegeEscalation: false,
+                  capabilities: { drop: ['ALL'] },
+                },
+              },
+            ],
+            volumes: options.secretName
+              ? [
+                  {
+                    name: 'varlens-ops-user-credential',
+                    secret: { secretName: options.secretName },
+                  },
+                ]
+              : [],
+          },
+        },
+      },
+    });
+  }
+
+  private async waitForLifecycleJob(
+    target: TargetConfig,
+    jobName: string,
+    timeoutMs: number,
+  ): Promise<JobLike> {
+    const deadline = Date.now() + timeoutMs;
+    let latest = await this.kubernetes.job(target, jobName);
+    while (!isFinishedJob(latest) && Date.now() < deadline) {
+      await sleep(1_000);
+      latest = await this.kubernetes.job(target, jobName);
+    }
+    return latest;
   }
 
   private async appHealth(
@@ -1481,4 +2020,163 @@ function hashValue(value: string): string {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   }
   return hash.toString(16);
+}
+
+function validateRequired(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new BadRequestException(`input ${name} is required`);
+  }
+  return value.trim();
+}
+
+function validateVarLensUsername(value: string | undefined): string {
+  const username = validateRequired(value, 'username');
+  if (!/^[A-Za-z0-9._@+-]{1,100}$/.test(username)) {
+    throw new BadRequestException('VarLens-Benutzername ist ungültig.');
+  }
+  return username;
+}
+
+function generatedPassword(): string {
+  return randomBytes(36).toString('base64url');
+}
+
+function safeK8sSuffix(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return (normalized || 'user').slice(0, 40).replace(/^-|-$/g, '') || 'user';
+}
+
+function stableK8sSuffix(value: string): string {
+  const base = safeK8sSuffix(value).slice(0, 31).replace(/^-|-$/g, '') || 'user';
+  return `${base}-${sha256(value).slice(0, 8)}`;
+}
+
+function stablePgSuffix(value: string): string {
+  const normalized =
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '') || 'user';
+  return `${normalized.slice(0, 32).replace(/^_|_$/g, '') || 'user'}_${sha256(value).slice(0, 8)}`;
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function varlensUserDbPlan(username: string): {
+  readonly dbName: string;
+  readonly ownerRole: string;
+  readonly migratorRole: string;
+  readonly appRole: string;
+  readonly secretName: string;
+  readonly secretRef: string;
+} {
+  const suffix = stablePgSuffix(username);
+  const k8sSuffix = stableK8sSuffix(username);
+  return {
+    dbName: `varlens_user_${suffix}`,
+    ownerRole: `varlens_user_${suffix}_owner`,
+    migratorRole: `varlens_user_${suffix}_migrator`,
+    appRole: `varlens_user_${suffix}_app_rw`,
+    secretName: `varlens-workspace-db-${k8sSuffix}`,
+    secretRef: `varlens-user-${k8sSuffix}.pgurl`,
+  };
+}
+
+function postgresUrl(role: string, password: string, dbName: string): string {
+  return `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(password)}@varlens-postgres-rw:5432/${encodeURIComponent(dbName)}`;
+}
+
+function lifecycleJobName(
+  operation: 'create' | 'block' | 'prune',
+  username: string,
+): string {
+  return `varlens-ops-user-${operation}-${stableK8sSuffix(username)}`.slice(0, 63);
+}
+
+function varlensUserJobLabels(
+  target: TargetConfig,
+  username: string,
+  operation: 'create' | 'block' | 'prune',
+): Record<string, string> {
+  return {
+    'app.kubernetes.io/name': target.serviceName,
+    'app.kubernetes.io/component': 'user-lifecycle',
+    'platform.robspan.net/app': target.app,
+    'platform.robspan.net/environment': target.environment,
+    'ops.robspan.net/operation': operation,
+    'ops.robspan.net/user-hash': sha256(username).slice(0, 16),
+  };
+}
+
+function varlensUserSecretLabels(
+  target: TargetConfig,
+  username: string,
+): Record<string, string> {
+  return {
+    'app.kubernetes.io/name': target.serviceName,
+    'app.kubernetes.io/component': 'workspace-db',
+    'platform.robspan.net/app': target.app,
+    'platform.robspan.net/environment': target.environment,
+    'ops.robspan.net/user-hash': sha256(username).slice(0, 16),
+  };
+}
+
+function varlensRuntimeEnv(secretName?: string): readonly Record<string, unknown>[] {
+  const env: Record<string, unknown>[] = [
+    { name: 'NODE_ENV', value: 'production' },
+    { name: 'VARLENS_PG_SCHEMA', value: 'public' },
+    { name: 'VARLENS_WEB_DB_TOPOLOGY', value: 'hosted' },
+    {
+      name: 'VARLENS_PG_URL',
+      valueFrom: { secretKeyRef: { name: 'varlens-postgres-app', key: 'uri' } },
+    },
+    {
+      name: 'VARLENS_CONTROL_RO_PG_URL',
+      valueFrom: { secretKeyRef: { name: 'varlens-postgres-app', key: 'uri' } },
+    },
+    {
+      name: 'VARLENS_CONTROL_STATE_PG_URL',
+      valueFrom: { secretKeyRef: { name: 'varlens-postgres-app', key: 'uri' } },
+    },
+    {
+      name: 'PGHOST',
+      valueFrom: {
+        secretKeyRef: { name: 'varlens-postgres-superuser', key: 'host' },
+      },
+    },
+    {
+      name: 'PGPORT',
+      valueFrom: {
+        secretKeyRef: { name: 'varlens-postgres-superuser', key: 'port' },
+      },
+    },
+    {
+      name: 'PGUSER',
+      valueFrom: {
+        secretKeyRef: { name: 'varlens-postgres-superuser', key: 'username' },
+      },
+    },
+    {
+      name: 'PGPASSWORD',
+      valueFrom: {
+        secretKeyRef: { name: 'varlens-postgres-superuser', key: 'password' },
+      },
+    },
+  ];
+  if (secretName) {
+    env.push({
+      name: 'VARLENS_PRIVATE_MIGRATOR_PG_URL',
+      valueFrom: {
+        secretKeyRef: { name: secretName, key: 'privateMigratorUrl' },
+      },
+    });
+  }
+  return env;
 }

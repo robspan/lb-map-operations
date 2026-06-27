@@ -104,6 +104,42 @@ const resourceLimitInput: ActionInputDefinition = {
   defaultValue: '10',
 };
 
+const varlensUsernameInput: ActionInputDefinition = {
+  name: 'username',
+  label: 'VarLens-Benutzer',
+  type: 'text',
+  required: true,
+  pattern: '^[A-Za-z0-9._@+-]{1,100}$',
+  maxLength: 100,
+};
+
+const varlensDisplayNameInput: ActionInputDefinition = {
+  name: 'displayName',
+  label: 'Name',
+  type: 'text',
+  required: true,
+  maxLength: 200,
+};
+
+const varlensInitialPasswordInput: ActionInputDefinition = {
+  name: 'initialPassword',
+  label: 'Initiales Passwort',
+  type: 'text',
+  required: true,
+  pattern: '^.{8,256}$',
+  maxLength: 256,
+  sensitive: true,
+};
+
+const confirmUsernameInput: ActionInputDefinition = {
+  name: 'confirmUsername',
+  label: 'Benutzer bestätigen',
+  type: 'text',
+  required: true,
+  pattern: '^[A-Za-z0-9._@+-]{1,100}$',
+  maxLength: 100,
+};
+
 export const ACTIONS: readonly OperationAction[] = [
   {
     id: 'diagnose-target',
@@ -282,6 +318,47 @@ export const ACTIONS: readonly OperationAction[] = [
     inputs: [targetAppInput, targetEnvironmentInput],
   },
   {
+    id: 'varlens-user-create',
+    title: 'VarLens-Nutzer anlegen',
+    description:
+      'Legt einen normalen VarLens-Nutzer mit eigener Workspace-Datenbank an.',
+    role: 'admin',
+    kind: 'mutation',
+    targetApp: 'varlens',
+    inputs: [
+      targetAppInput,
+      targetEnvironmentInput,
+      varlensUsernameInput,
+      varlensDisplayNameInput,
+      varlensInitialPasswordInput,
+    ],
+  },
+  {
+    id: 'varlens-user-block',
+    title: 'VarLens-Nutzer sperren',
+    description:
+      'Sperrt den VarLens-Login und deaktiviert die Workspace-DB-Zuordnung.',
+    role: 'admin',
+    kind: 'mutation',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput, varlensUsernameInput],
+  },
+  {
+    id: 'varlens-user-prune',
+    title: 'VarLens-Nutzer entfernen',
+    description:
+      'Entfernt den VarLens-Nutzer und löscht dessen abgeleitete Workspace-Datenbank.',
+    role: 'admin',
+    kind: 'mutation',
+    targetApp: 'varlens',
+    inputs: [
+      targetAppInput,
+      targetEnvironmentInput,
+      varlensUsernameInput,
+      confirmUsernameInput,
+    ],
+  },
+  {
     id: 'rollout-restart',
     title: 'Stateless Restart',
     description: 'Deployment per Rollout-Annotation neu starten.',
@@ -307,6 +384,8 @@ const FORBIDDEN_ACTION_FRAGMENTS = [
   'role',
 ];
 
+const EXPLICIT_OPERATIONAL_PRUNE_ACTIONS = new Set(['varlens-user-prune']);
+
 export function visibleActions(
   roles: readonly OpsRole[],
 ): readonly OperationAction[] {
@@ -326,6 +405,12 @@ export function assertSafeCatalog(
     }
     for (const fragment of FORBIDDEN_ACTION_FRAGMENTS) {
       if (action.id.toLowerCase().includes(fragment)) {
+        if (
+          fragment === 'prune' &&
+          EXPLICIT_OPERATIONAL_PRUNE_ACTIONS.has(action.id)
+        ) {
+          continue;
+        }
         throw new Error(
           `forbidden action id fragment ${fragment}: ${action.id}`,
         );

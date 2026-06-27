@@ -62,6 +62,12 @@ const ACTION_HELP: Record<string, string> = {
     'Bündelt Status, Pods, Events und ArgoCD-Zustand in einem Paket – ideal zum Anhängen an eine Eskalation an die interne IT.',
   'argo-sync':
     'Löst einen ArgoCD-Sync ohne Prune aus, um den Soll-Zustand aus Git erneut anzuwenden. Eingriff – verändert die Live-Umgebung.',
+  'varlens-user-create':
+    'Legt einen normalen VarLens-Nutzer mit eigener Workspace-Datenbank an. Rollen werden nicht bearbeitet.',
+  'varlens-user-block':
+    'Sperrt den VarLens-Login und deaktiviert die Workspace-Datenbank-Zuordnung, ohne die Datenbank zu löschen.',
+  'varlens-user-prune':
+    'Entfernt genau diesen VarLens-Nutzer und dessen abgeleitete Workspace-Datenbank. Das ist keine Infra-Löschung.',
   'rollout-restart':
     'Startet das Deployment rollierend über eine Annotation neu (ohne Datenverlust). Eingriff – verändert die Live-Umgebung.',
 };
@@ -122,6 +128,8 @@ export class App implements OnInit {
 
   diagnostics: OperationAction[] = [];
   mutations: OperationAction[] = [];
+  userMutations: OperationAction[] = [];
+  platformMutations: OperationAction[] = [];
   inputs: Record<string, Record<string, string>> = {};
   private readonly actionTitles: Record<string, string> = {};
 
@@ -172,6 +180,12 @@ export class App implements OnInit {
             action.id !== 'observability-links'
         );
         this.mutations = actions.actions.filter((action) => action.kind === 'mutation');
+        this.userMutations = this.mutations.filter((action) =>
+          action.id.startsWith('varlens-user-')
+        );
+        this.platformMutations = this.mutations.filter(
+          (action) => !action.id.startsWith('varlens-user-')
+        );
         for (const action of actions.actions) {
           this.actionTitles[action.id] = action.title;
           this.inputs[action.id] = {};
@@ -412,6 +426,10 @@ export class App implements OnInit {
 
   /** Diagnostics run immediately; mutations require an explicit confirm first. */
   run(action: OperationAction): void {
+    if (action.kind === 'mutation' && this.missingRequiredInputs(action)) {
+      this.openConfig(action);
+      return;
+    }
     if (action.kind === 'mutation' && this.confirmingActionId !== action.id) {
       this.confirmingActionId = action.id;
       return;
@@ -497,5 +515,12 @@ export class App implements OnInit {
           this.changeDetector.detectChanges();
         },
       });
+  }
+
+  private missingRequiredInputs(action: OperationAction): boolean {
+    const values = this.inputs[action.id] || {};
+    return this.actionSpecificInputs(action).some(
+      (input) => input.required && !String(values[input.name] || '').trim()
+    );
   }
 }

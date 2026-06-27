@@ -345,20 +345,105 @@
         }
       </section>
 
-      @if (mutations.length) {
+      @if (userMutations.length) {
         <section class="group">
           <header class="group-head">
-            <h2>Eingriffe</h2>
+            <h2>VarLens-Nutzer verwalten</h2>
+            <span class="group-note warn">legt, sperrt oder entfernt genau einen Nutzer</span>
+            <app-info
+              text="Admin-Operationen fuer normale VarLens-Nutzer. Keine Rechtebearbeitung und keine Einsicht in private Falldaten."
+            />
+          </header>
+          @for (action of userMutations; track action.id) {
+            <article class="action is-mutation is-user-operation" data-testid="action-card">
+              <div class="action-main">
+                <h3>{{ action.title }}</h3>
+                <p>{{ action.description }}</p>
+              </div>
+              <app-info [text]="helpFor(action)" />
+              @if (hasConfig(action)) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  data-testid="config-button"
+                  [disabled]="!!runningActionId"
+                  (click)="openConfig(action)"
+                >
+                  Eingaben
+                  @if (customizedCount(action)) {
+                    <span>gesetzt</span>
+                  }
+                </button>
+              }
+              @if (confirmingActionId === action.id) {
+                <div class="confirm">
+                  <span class="confirm-note">
+                    {{ action.title }} auf {{ selectedApp }}/{{ selectedEnvironment }} ausführen?
+                  </span>
+                  <button mat-stroked-button type="button" (click)="cancel()">Abbrechen</button>
+                  <button
+                    mat-flat-button
+                    color="warn"
+                    type="button"
+                    data-testid="confirm-action"
+                    [disabled]="!!runningActionId"
+                    (click)="confirm(action)"
+                  >
+                    Bestätigen
+                  </button>
+                </div>
+              } @else {
+                <button
+                  mat-stroked-button
+                  color="warn"
+                  type="button"
+                  data-testid="run-action"
+                  [disabled]="!!runningActionId"
+                  (click)="run(action)"
+                >
+                  Ausführen
+                </button>
+              }
+            </article>
+          }
+        </section>
+      }
+
+      @if (platformMutations.length) {
+        <section class="group">
+          <header class="group-head">
+            <h2>Plattform-Eingriffe</h2>
             <span class="group-note warn">verändert die Live-Umgebung</span>
             <app-info [text]="uiHelp.eingriffe" />
           </header>
-          @for (action of mutations; track action.id) {
+          @for (action of platformMutations; track action.id) {
             <article class="action is-mutation" data-testid="action-card">
               <div class="action-main">
                 <h3>{{ action.title }}</h3>
                 <p>{{ action.description }}</p>
               </div>
               <app-info [text]="helpFor(action)" />
+              @if (hasConfig(action)) {
+                <button
+                  class="config-button"
+                  mat-icon-button
+                  type="button"
+                  aria-label="Konfiguration"
+                  data-testid="config-button"
+                  [disabled]="!!runningActionId"
+                  (click)="openConfig(action)"
+                >
+                  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
+                    />
+                  </svg>
+                  @if (customizedCount(action)) {
+                    <span class="config-badge" aria-hidden="true"></span>
+                  }
+                </button>
+              }
               @if (confirmingActionId === action.id) {
                 <div class="confirm">
                   <span class="confirm-note">

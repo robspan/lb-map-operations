@@ -38,6 +38,22 @@ const mutation = {
   inputs: [],
 };
 
+const varlensUserMutation = {
+  id: 'varlens-user-create',
+  title: 'VarLens-Nutzer anlegen',
+  description: 'Normalen VarLens-Nutzer anlegen.',
+  role: 'admin',
+  kind: 'mutation',
+  targetApp: 'varlens',
+  inputs: [
+    { name: 'targetApp', label: 'App', type: 'select', required: true, options: ['varlens'], defaultValue: 'varlens' },
+    { name: 'targetEnvironment', label: 'Umgebung', type: 'select', required: true, options: ['dev', 'test'], defaultValue: 'test' },
+    { name: 'username', label: 'VarLens-Benutzer', type: 'text', required: true },
+    { name: 'displayName', label: 'Name', type: 'text', required: true },
+    { name: 'initialPassword', label: 'Initiales Passwort', type: 'text', required: true, sensitive: true },
+  ],
+};
+
 describe('App', () => {
   beforeEach(async () => {
     localStorage.clear();
@@ -289,6 +305,27 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(compiled.textContent).toContain('Neustart angewendet.');
+  });
+
+  it('renders VarLens user lifecycle actions as the primary admin operation block', async () => {
+    const { fixture, http } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [varlensUserMutation, mutation]
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).toContain('VarLens-Nutzer verwalten');
+    expect(compiled.textContent).toContain('VarLens-Nutzer anlegen');
+    expect(compiled.textContent).toContain('Plattform-Eingriffe');
+
+    const runButtons = compiled.querySelectorAll('[data-testid="run-action"]');
+    (runButtons[0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    http.expectNone('/api/actions/varlens-user-create/runs');
+    expect(document.body.textContent).toContain('VarLens-Nutzer anlegen');
   });
 
   afterEach(() => {

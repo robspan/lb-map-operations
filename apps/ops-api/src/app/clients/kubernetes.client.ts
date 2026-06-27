@@ -56,6 +56,10 @@ interface Job {
   };
 }
 
+interface Secret {
+  readonly metadata?: KubernetesMetadata;
+}
+
 @Injectable()
 export class KubernetesClient {
   constructor(private readonly config: OpsConfigService) {}
@@ -191,6 +195,95 @@ export class KubernetesClient {
     return job.metadata?.name || 'unknown';
   }
 
+  async createJob(namespace: string, body: unknown): Promise<Job> {
+    return this.request<Job>(`/apis/batch/v1/namespaces/${namespace}/jobs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteJob(namespace: string, jobName: string): Promise<void> {
+    await this.requestText(
+      `/apis/batch/v1/namespaces/${namespace}/jobs/${jobName}?propagationPolicy=Background`,
+      { method: 'DELETE' },
+    ).catch((error) => {
+      if (!message(error).includes('404')) {
+        throw error;
+      }
+    });
+  }
+
+  async applySecret(
+    namespace: string,
+    name: string,
+    stringData: Record<string, string>,
+    labels: Record<string, string> = {},
+  ): Promise<void> {
+    const body = {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name, labels },
+      type: 'Opaque',
+      stringData,
+    };
+    await this.request<Secret>(`/api/v1/namespaces/${namespace}/secrets/${name}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/merge-patch+json' },
+      body: JSON.stringify(body),
+    }).catch(async (error) => {
+      if (!message(error).includes('404')) {
+        throw error;
+      }
+      await this.request<Secret>(`/api/v1/namespaces/${namespace}/secrets`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    });
+  }
+
+  async patchSecret(
+    namespace: string,
+    name: string,
+    body: unknown,
+  ): Promise<void> {
+    await this.request<Secret>(`/api/v1/namespaces/${namespace}/secrets/${name}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/merge-patch+json' },
+      body: JSON.stringify(body),
+    }).catch(async (error) => {
+      if (!message(error).includes('404')) {
+        throw error;
+      }
+      await this.request<Secret>(`/api/v1/namespaces/${namespace}/secrets`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          apiVersion: 'v1',
+          kind: 'Secret',
+          metadata: { name },
+          type: 'Opaque',
+        }),
+      });
+      await this.request<Secret>(`/api/v1/namespaces/${namespace}/secrets/${name}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/merge-patch+json' },
+        body: JSON.stringify(body),
+      });
+    });
+  }
+
+  async deleteSecret(namespace: string, name: string): Promise<void> {
+    await this.requestText(`/api/v1/namespaces/${namespace}/secrets/${name}`, {
+      method: 'DELETE',
+    }).catch((error) => {
+      if (!message(error).includes('404')) {
+        throw error;
+      }
+    });
+  }
+
   async getPath<T = unknown>(path: string): Promise<T> {
     return this.request<T>(path);
   }
@@ -223,10 +316,15 @@ export class KubernetesClient {
     return (await response.json()) as T;
   }
 
-  private async requestText(path: string): Promise<string> {
+  private async requestText(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<string> {
     const response = await fetch(`${this.config.kubernetesApiBase}${path}`, {
+      ...init,
       headers: {
         authorization: `Bearer ${this.token()}`,
+        ...(init.headers || {}),
       },
     });
     if (!response.ok) {
@@ -240,4 +338,8 @@ export class KubernetesClient {
   private token(): string {
     return readFileSync(this.config.kubernetesTokenFile, 'utf8').trim();
   }
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

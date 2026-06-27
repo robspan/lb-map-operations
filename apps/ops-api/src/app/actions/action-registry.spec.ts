@@ -1,7 +1,7 @@
 import { ACTIONS, assertSafeCatalog, visibleActions } from './action-registry';
 
 describe('action registry', () => {
-  it('contains no destructive or privilege-escalating action IDs', () => {
+  it('contains only reviewed destructive or privilege-sensitive action IDs', () => {
     expect(() => assertSafeCatalog()).not.toThrow();
     expect(ACTIONS.map((action) => action.id)).toEqual([
       'diagnose-target',
@@ -19,6 +19,9 @@ describe('action registry', () => {
       'observability-status',
       'escalation-bundle',
       'argo-sync',
+      'varlens-user-create',
+      'varlens-user-block',
+      'varlens-user-prune',
       'rollout-restart',
     ]);
   });
@@ -32,6 +35,9 @@ describe('action registry', () => {
     expect(firstLevelActions).not.toContain('observability-links');
     expect(firstLevelActions).not.toContain('platform-overview');
     expect(firstLevelActions).not.toContain('data-store-status');
+    expect(firstLevelActions).not.toContain('varlens-user-create');
+    expect(firstLevelActions).not.toContain('varlens-user-block');
+    expect(firstLevelActions).not.toContain('varlens-user-prune');
     expect(firstLevelActions).not.toContain('argo-sync');
     expect(firstLevelActions).not.toContain('rollout-restart');
   });
@@ -66,6 +72,19 @@ describe('action registry', () => {
       'targetEnvironment',
       'podLimit',
       'eventLimit',
+    ]);
+    expect(inputNames('varlens-user-create')).toEqual([
+      'targetApp',
+      'targetEnvironment',
+      'username',
+      'displayName',
+      'initialPassword',
+    ]);
+    expect(inputNames('varlens-user-prune')).toEqual([
+      'targetApp',
+      'targetEnvironment',
+      'username',
+      'confirmUsername',
     ]);
   });
 });

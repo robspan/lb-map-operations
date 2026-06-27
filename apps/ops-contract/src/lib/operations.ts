@@ -61,6 +61,7 @@ export interface ActionInputDefinition {
   readonly defaultValue?: string;
   readonly pattern?: string;
   readonly maxLength?: number;
+  readonly sensitive?: boolean;
 }
 
 export interface OperationAction {

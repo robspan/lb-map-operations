@@ -30,6 +30,12 @@ const INPUT_HELP: Record<string, string> = {
   jobLimit: 'Wie viele der letzten Smoke-Jobs angezeigt werden.',
   detailLevel: 'Detailgrad: nur Zusammenfassung oder zusätzlich einzelne ArgoCD-Ressourcen.',
   resourceLimit: 'Wie viele ArgoCD-Ressourcen bei „Detailgrad: resources“ angezeigt werden.',
+  username: 'VarLens-Benutzername. Die Rolle bleibt fest normaler VarLens-Nutzer.',
+  displayName: 'Anzeigename für den VarLens-Nutzer.',
+  initialPassword:
+    'Initiales VarLens-Passwort. Es wird nicht protokolliert und muss beim ersten Login geändert werden.',
+  confirmUsername:
+    'Sicherheitsbestätigung: muss exakt dem VarLens-Benutzernamen entsprechen.',
 };
 
 @Component({
@@ -62,6 +68,7 @@ const INPUT_HELP: Record<string, string> = {
               } @else {
                 <input
                   matInput
+                  [type]="input.sensitive ? 'password' : 'text'"
                   [(ngModel)]="values[input.name]"
                   [attr.data-field]="input.name"
                   [maxlength]="input.maxLength || 200"
