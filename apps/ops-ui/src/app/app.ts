@@ -26,9 +26,9 @@ import { ActionConfigDialog, ActionConfigData } from './action-config-dialog';
 import { ContractPanel } from './contract-panel';
 import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
-import { OpsApiService, OpsUserSummary } from './ops-api.service';
+import { OpsApiService, OpsAuditEvent, OpsUserSummary } from './ops-api.service';
 
-type OpsView = 'diagnose' | 'operations' | 'contract' | 'users';
+type OpsView = 'diagnose' | 'operations' | 'contract' | 'users' | 'audit';
 
 const EXPERT_MODE_KEY = 'ops.expertMode';
 
@@ -80,7 +80,7 @@ const UI_HELP = {
   history:
     'Aktionen dieser Sitzung. Auf einen Eintrag klicken, um dessen Ergebnis erneut anzuzeigen.',
   view:
-    'Diagnose: ein Klick prüft alles und schlägt Abhilfe vor. Operationen: einzelne Aktionen mit Parametern (Expertenmodus). Standard-Setup: der Operations-Vertrag der Ziel-App.',
+    'Diagnose: ein Klick prüft alles und schlägt Abhilfe vor. Operationen: einzelne Aktionen mit Parametern. Standard-Setup: der Operations-Vertrag der Ziel-App.',
 } as const;
 
 const STATUS_LABELS: Record<ActionStatus, string> = {
@@ -140,6 +140,8 @@ export class App implements OnInit {
   loginPassword = '';
   users: OpsUserSummary[] = [];
   userError = '';
+  auditEvents: OpsAuditEvent[] = [];
+  auditError = '';
   newUser = {
     username: '',
     displayName: '',
@@ -182,9 +184,15 @@ export class App implements OnInit {
             }
           }
         }
+        if (!this.isAdmin() && (this.activeView === 'users' || this.activeView === 'audit')) {
+          this.activeView = 'diagnose';
+        }
         this.loaded = true;
-        if (this.isAdmin()) {
+        if (this.activeView === 'users' && this.isAdmin()) {
           this.loadUsers();
+        }
+        if (this.activeView === 'audit' && this.isAdmin()) {
+          this.loadAudit();
         }
         this.changeDetector.detectChanges();
       },
@@ -217,6 +225,8 @@ export class App implements OnInit {
         this.actor = '';
         this.roles = [];
         this.users = [];
+        this.auditEvents = [];
+        this.activeView = 'diagnose';
         this.loadError = 'Anmeldung erforderlich.';
         this.changeDetector.detectChanges();
       },
@@ -228,6 +238,9 @@ export class App implements OnInit {
     this.confirmingActionId = '';
     if (view === 'users' && this.isAdmin()) {
       this.loadUsers();
+    }
+    if (view === 'audit' && this.isAdmin()) {
+      this.loadAudit();
     }
   }
 
@@ -244,6 +257,20 @@ export class App implements OnInit {
       },
       error: () => {
         this.userError = 'Benutzer konnten nicht geladen werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  loadAudit(): void {
+    this.auditError = '';
+    this.api.auditEvents(100).subscribe({
+      next: ({ events }) => {
+        this.auditEvents = events;
+        this.changeDetector.detectChanges();
+      },
+      error: () => {
+        this.auditError = 'Audit-Ereignisse konnten nicht geladen werden.';
         this.changeDetector.detectChanges();
       },
     });
@@ -383,6 +410,23 @@ export class App implements OnInit {
 
   statusLabel(status: ActionStatus): string {
     return STATUS_LABELS[status] || status;
+  }
+
+  auditTarget(event: OpsAuditEvent): string {
+    if (!event.targetApp && !event.targetEnvironment) {
+      return '-';
+    }
+    return `${event.targetApp || '-'}/${event.targetEnvironment || '-'}`;
+  }
+
+  auditMetadata(event: OpsAuditEvent): string {
+    const entries = Object.entries(event.metadata || {});
+    if (!entries.length) {
+      return '-';
+    }
+    return entries
+      .map(([key, value]) => `${key}=${value}`)
+      .join(', ');
   }
 
   /** Long or multiline values render in a monospace block. URLs are handled separately. */

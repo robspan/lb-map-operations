@@ -30,6 +30,10 @@ export class OpsApiService {
     return this.http.get<{ users: OpsUserSummary[] }>('/api/auth/users');
   }
 
+  auditEvents(limit = 100) {
+    return this.http.get<{ events: OpsAuditEvent[] }>(`/api/audit/events?limit=${limit}`);
+  }
+
   createUser(input: {
     username: string;
     displayName: string;
@@ -134,4 +138,17 @@ export interface OpsUserSummary {
   readonly role: string;
   readonly active: boolean;
   readonly mustChangePassword: boolean;
+}
+
+export interface OpsAuditEvent {
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly actor?: string;
+  readonly role?: string;
+  readonly action: string;
+  readonly targetApp?: string;
+  readonly targetEnvironment?: string;
+  readonly result: 'success' | 'failure' | 'rejected' | 'started';
+  readonly runId?: string;
+  readonly metadata: Record<string, string | number | boolean | null>;
 }

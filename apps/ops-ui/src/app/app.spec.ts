@@ -100,7 +100,7 @@ describe('App', () => {
     principal: unknown,
     actions: unknown[],
     contracts: unknown[] = [contract],
-    view: 'diagnose' | 'operations' | 'contract' = 'operations'
+    view: 'diagnose' | 'operations' | 'contract' | 'users' | 'audit' = 'operations'
   ) {
     const fixture = TestBed.createComponent(App);
     // Set the active tab before the first change detection to keep the rendered state stable.
@@ -230,6 +230,64 @@ describe('App', () => {
     expect(panel?.textContent).toContain('varlens-test');
     expect(panel?.textContent).toContain('http_requests_total');
     expect(panel?.textContent).toContain('App nicht erreichbar');
+  });
+
+  it('renders the DB-backed user administration table for admins', async () => {
+    const { fixture, http } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [diagnostic],
+      [contract],
+      'users'
+    );
+    http.expectOne('/api/auth/users').flush({
+      users: [
+        {
+          id: '1',
+          username: 'ops-admin',
+          displayName: 'Operations Admin',
+          email: 'ops-admin@example.invalid',
+          role: 'admin',
+          active: true,
+          mustChangePassword: false,
+        },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Benutzer anlegen');
+    expect(compiled.textContent).toContain('ops-admin');
+    expect(compiled.textContent).toContain('Operations Admin');
+  });
+
+  it('renders recent audit events for admins', async () => {
+    const { fixture, http } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [diagnostic],
+      [contract],
+      'audit'
+    );
+    http.expectOne('/api/audit/events?limit=100').flush({
+      events: [
+        {
+          id: '2',
+          occurredAt: new Date().toISOString(),
+          actor: 'ops-admin',
+          role: 'admin',
+          action: 'auth-login',
+          result: 'success',
+          metadata: {},
+        },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Audit-Aktivität');
+    expect(compiled.textContent).toContain('auth-login');
+    expect(compiled.textContent).toContain('ops-admin');
   });
 
   it('should not run a mutation until it is confirmed', async () => {

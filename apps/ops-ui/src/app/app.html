@@ -73,6 +73,7 @@
         <mat-button-toggle value="contract">Standard-Setup</mat-button-toggle>
         @if (isAdmin()) {
           <mat-button-toggle value="users">Benutzer</mat-button-toggle>
+          <mat-button-toggle value="audit">Audit</mat-button-toggle>
         }
       </mat-button-toggle-group>
     <app-info [text]="uiHelp.view" />
@@ -113,12 +114,15 @@
 }
 
 @if (loaded && !loadError && activeView === 'users' && isAdmin()) {
-  <main class="users-view">
+  <main class="admin-view">
     @if (userError) {
       <p class="banner error">{{ userError }}</p>
     }
-    <section class="user-create">
-      <h2>Benutzer anlegen</h2>
+    <section class="admin-create">
+      <div class="admin-section-head">
+        <h2>Benutzer anlegen</h2>
+        <span class="muted">Lokale Operations-Konten, keine Plattform-Rollenänderung</span>
+      </div>
       <mat-form-field appearance="outline">
         <mat-label>Benutzer</mat-label>
         <input matInput [(ngModel)]="newUser.username" name="newUsername" />
@@ -148,17 +152,21 @@
       </button>
     </section>
 
-    <section class="user-table">
-      <h2>Benutzer</h2>
-      <table>
+    <section class="admin-table">
+      <div class="admin-section-head">
+        <h2>Benutzer</h2>
+        <button mat-stroked-button type="button" (click)="loadUsers()">Aktualisieren</button>
+      </div>
+      <table aria-label="Benutzer">
         <thead>
           <tr>
             <th>Benutzer</th>
             <th>Name</th>
+            <th>E-Mail</th>
             <th>Rolle</th>
             <th>Status</th>
             <th>Passwort setzen</th>
-            <th></th>
+            <th>Aktion</th>
           </tr>
         </thead>
         <tbody>
@@ -166,21 +174,28 @@
             <tr>
               <td>{{ user.username }}</td>
               <td>{{ user.displayName }}</td>
+              <td>{{ user.email || '-' }}</td>
               <td>{{ roleLabel(user.role) }}</td>
-              <td>{{ user.active ? 'aktiv' : 'deaktiviert' }}</td>
               <td>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Neues Passwort</mat-label>
-                  <input
-                    matInput
-                    type="password"
-                    [(ngModel)]="resetPasswords[user.username]"
-                    [name]="'reset-' + user.username"
-                  />
-                </mat-form-field>
-                <button mat-stroked-button type="button" (click)="resetPassword(user)">
-                  Setzen
-                </button>
+                <span class="status-pill" [class.off]="!user.active">
+                  {{ user.active ? 'aktiv' : 'deaktiviert' }}
+                </span>
+              </td>
+              <td>
+                <div class="inline-password">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Neues Passwort</mat-label>
+                    <input
+                      matInput
+                      type="password"
+                      [(ngModel)]="resetPasswords[user.username]"
+                      [name]="'reset-' + user.username"
+                    />
+                  </mat-form-field>
+                  <button mat-stroked-button type="button" (click)="resetPassword(user)">
+                    Setzen
+                  </button>
+                </div>
               </td>
               <td>
                 @if (user.active) {
@@ -193,6 +208,52 @@
                   </button>
                 }
               </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  </main>
+}
+
+@if (loaded && !loadError && activeView === 'audit' && isAdmin()) {
+  <main class="admin-view">
+    @if (auditError) {
+      <p class="banner error">{{ auditError }}</p>
+    }
+    <section class="admin-table">
+      <div class="admin-section-head">
+        <h2>Audit-Aktivität</h2>
+        <button mat-stroked-button type="button" (click)="loadAudit()">Aktualisieren</button>
+      </div>
+      <table aria-label="Audit-Aktivität">
+        <thead>
+          <tr>
+            <th>Zeit</th>
+            <th>Akteur</th>
+            <th>Rolle</th>
+            <th>Aktion</th>
+            <th>Ziel</th>
+            <th>Ergebnis</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (event of auditEvents; track event.id) {
+            <tr>
+              <td>{{ event.occurredAt | date: 'HH:mm:ss' }}</td>
+              <td>{{ event.actor || '-' }}</td>
+              <td>{{ event.role ? roleLabel(event.role) : '-' }}</td>
+              <td>{{ event.action }}</td>
+              <td>{{ auditTarget(event) }}</td>
+              <td>
+                <span class="status status-{{ event.result }}">{{ event.result }}</span>
+              </td>
+              <td class="metadata">{{ auditMetadata(event) }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7" class="muted">Noch keine Audit-Ereignisse vorhanden.</td>
             </tr>
           }
         </tbody>
