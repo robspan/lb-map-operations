@@ -319,17 +319,10 @@
 }
 
 .action {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   padding: 15px 16px;
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
-}
-.action:hover {
-  box-shadow: var(--shadow-md);
 }
 .action + .action {
   margin-top: 10px;
@@ -341,23 +334,10 @@
   background: var(--info-bg);
 }
 
-.config-button {
-  position: relative;
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-.config-button:hover:not(:disabled) {
-  color: var(--ink);
-}
-.config-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 1px solid var(--surface);
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .action-main {
@@ -376,17 +356,37 @@
   color: var(--ink-soft);
 }
 
-.confirm {
+.action-cta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex: 0 0 auto;
 }
-.confirm-note {
+
+.options-toggle {
+  color: var(--accent-ink);
   font-size: 0.82rem;
-  color: var(--crit-fg);
-  margin-right: 4px;
+}
+
+/* inline parameter form — fill and run in one place, no modal */
+.action-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair);
+}
+.action-inputs .field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.action-inputs mat-form-field {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .results {
@@ -490,9 +490,12 @@
   .admin-create {
     grid-template-columns: 1fr;
   }
-  .action {
+  .action-row {
     flex-direction: column;
     align-items: stretch;
+  }
+  .action-cta {
+    justify-content: flex-start;
   }
   .evidence-row {
     grid-template-columns: 1fr;

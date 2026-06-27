@@ -176,6 +176,12 @@ body {
   color: var(--muted);
 }
 
+.confirm-note {
+  font-size: 0.82rem;
+  color: var(--crit-fg);
+  margin-right: 4px;
+}
+
 /* Key/value evidence (operations result panel) */
 .evidence {
   margin-top: 14px;

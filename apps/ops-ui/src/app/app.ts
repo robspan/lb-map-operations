@@ -3,7 +3,6 @@ import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
@@ -19,7 +18,6 @@ import {
   TargetEnvironment,
 } from '@lb-map-operations/ops-contract';
 import { finalize, forkJoin } from 'rxjs';
-import { ActionConfigDialog, ActionConfigData } from './action-config-dialog';
 import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
 import { OpsApiService, OpsAuditEvent, OpsUserSummary } from './ops-api.service';
@@ -72,6 +70,28 @@ const ACTION_HELP: Record<string, string> = {
     'Startet das Deployment rollierend über eine Annotation neu (ohne Datenverlust). Eingriff – verändert die Live-Umgebung.',
 };
 
+/** Per-input explanations for the inline action forms. */
+const INPUT_HELP: Record<string, string> = {
+  timeoutSeconds: 'Maximale Wartezeit pro HTTP-Aufruf in Sekunden, bevor er als fehlgeschlagen gilt.',
+  endpointScope:
+    'Welche Endpunkte geprüft werden: intern (im Cluster), öffentlich (von außen) oder beide.',
+  podLimit: 'Wie viele Pods maximal angezeigt werden.',
+  eventLimit: 'Wie viele der letzten Namespace-Events angezeigt werden.',
+  podSelection:
+    'Aus welchem Pod die Logs gelesen werden: bevorzugt laufender, neuester oder ältester.',
+  previous:
+    'Logs des vorherigen (abgestürzten) Containers lesen statt des aktuellen – hilfreich bei CrashLoops.',
+  tailLines: 'Anzahl der zuletzt gelesenen Log-Zeilen.',
+  jobLimit: 'Wie viele der letzten Smoke-Jobs angezeigt werden.',
+  detailLevel: 'Detailgrad: nur Zusammenfassung oder zusätzlich einzelne ArgoCD-Ressourcen.',
+  resourceLimit: 'Wie viele ArgoCD-Ressourcen bei „Detailgrad: resources“ angezeigt werden.',
+  username: 'VarLens-Benutzername. Die Rolle bleibt fest normaler VarLens-Nutzer.',
+  displayName: 'Anzeigename für den VarLens-Nutzer.',
+  initialPassword:
+    'Initiales VarLens-Passwort. Es wird nicht protokolliert und muss beim ersten Login geändert werden.',
+  confirmUsername: 'Sicherheitsbestätigung: muss exakt dem VarLens-Benutzernamen entsprechen.',
+};
+
 /** Explanations for the general controls and sections. */
 const UI_HELP = {
   app: 'Die Ziel-App, auf die sich alle Aktionen beziehen.',
@@ -100,7 +120,6 @@ const STATUS_LABELS: Record<ActionStatus, string> = {
     FormsModule,
     MatButtonModule,
     MatChipsModule,
-    MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
     MatProgressBarModule,
@@ -116,10 +135,11 @@ const STATUS_LABELS: Record<ActionStatus, string> = {
 export class App implements OnInit {
   private readonly api = inject(OpsApiService);
   private readonly changeDetector = inject(ChangeDetectorRef);
-  private readonly dialog = inject(MatDialog);
 
   readonly uiHelp = UI_HELP;
   activeView: OpsView = 'diagnose';
+  /** Actions whose optional inline parameters are currently revealed. */
+  private readonly openOptions = new Set<string>();
 
   actor = '';
   roles: readonly OpsRole[] = [];
@@ -395,39 +415,54 @@ export class App implements OnInit {
     return ACTION_HELP[action.id] || action.description;
   }
 
+  inputHelp(name: string): string {
+    return INPUT_HELP[name] || '';
+  }
+
   roleLabel(role: string): string {
     return ROLE_LABELS[role as OpsRole] || role;
   }
 
-  /** Number of action inputs that differ from their default value. */
-  customizedCount(action: OperationAction): number {
-    const values = this.inputs[action.id] || {};
-    return this.actionSpecificInputs(action).filter(
-      (input) => (values[input.name] ?? '') !== (input.defaultValue ?? '')
-    ).length;
+  isUserOperation(action: OperationAction): boolean {
+    return action.id.startsWith('varlens-user-');
   }
 
-  openConfig(action: OperationAction): void {
-    const data: ActionConfigData = {
-      action,
-      inputs: this.actionSpecificInputs(action),
-      values: { ...(this.inputs[action.id] || {}) },
-    };
-    this.dialog
-      .open(ActionConfigDialog, { data, autoFocus: false, restoreFocus: true })
-      .afterClosed()
-      .subscribe((result?: Record<string, string>) => {
-        if (result) {
-          this.inputs[action.id] = result;
-        }
-        this.changeDetector.detectChanges();
-      });
+  /** True when an action has inputs the operator must type (required, no default). */
+  needsInput(action: OperationAction): boolean {
+    return this.actionSpecificInputs(action).some(
+      (input) => input.required && !input.defaultValue
+    );
+  }
+
+  /** Optional, defaulted inputs that hide behind an "Optionen" disclosure. */
+  hasOptionalInputs(action: OperationAction): boolean {
+    return this.hasConfig(action) && !this.needsInput(action);
+  }
+
+  optionsOpen(action: OperationAction): boolean {
+    return this.needsInput(action) || this.openOptions.has(action.id);
+  }
+
+  /** Whether the inline parameter form should be rendered for this action. */
+  showInputs(action: OperationAction): boolean {
+    return this.hasConfig(action) && this.optionsOpen(action);
+  }
+
+  toggleOptions(action: OperationAction): void {
+    if (this.openOptions.has(action.id)) {
+      this.openOptions.delete(action.id);
+    } else {
+      this.openOptions.add(action.id);
+    }
+  }
+
+  actionReady(action: OperationAction): boolean {
+    return !this.missingRequiredInputs(action);
   }
 
   /** Diagnostics run immediately; mutations require an explicit confirm first. */
   run(action: OperationAction): void {
-    if (action.kind === 'mutation' && this.missingRequiredInputs(action)) {
-      this.openConfig(action);
+    if (this.runningActionId || !this.actionReady(action)) {
       return;
     }
     if (action.kind === 'mutation' && this.confirmingActionId !== action.id) {

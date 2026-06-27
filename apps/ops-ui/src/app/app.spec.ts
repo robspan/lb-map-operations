@@ -174,7 +174,7 @@ describe('App', () => {
     expect(compiled.querySelector('.evidence-log')?.textContent).toContain('kkk');
   });
 
-  it('shows action configuration controls for admins without an expert toggle', async () => {
+  it('reveals optional diagnostic parameters inline, not in a modal', async () => {
     const { fixture } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnosticWithConfig]
@@ -182,9 +182,46 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('[data-testid="config-button"]')).toBeTruthy();
+
+    // No modal / config button / expert toggle anymore.
+    expect(compiled.querySelector('[data-testid="config-button"]')).toBeNull();
     expect(compiled.querySelector('[data-testid="expert-toggle"]')).toBeNull();
-    expect(compiled.textContent).not.toContain('Standard-Setup');
+    // Optional inputs are hidden until the inline "Optionen" disclosure is opened.
+    expect(compiled.querySelector('[data-field="tailLines"]')).toBeNull();
+
+    (compiled.querySelector('[data-testid="options-toggle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(compiled.querySelector('[data-field="tailLines"]')).toBeTruthy();
+  });
+
+  it('shows required mutation inputs inline and blocks run until they are filled', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [varlensUserMutation]
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    // Required-input mutation shows its fields inline immediately (no "Optionen", no modal).
+    expect(compiled.querySelector('[data-field="username"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="config-button"]')).toBeNull();
+    expect(compiled.querySelector('[data-testid="options-toggle"]')).toBeNull();
+    expect((compiled.querySelector('[data-testid="run-action"]') as HTMLButtonElement).disabled).toBe(true);
+
+    // Run is gated on the required inputs being filled.
+    const component = fixture.componentInstance as unknown as {
+      userMutations: { id: string }[];
+      inputs: Record<string, Record<string, string>>;
+      actionReady: (action: unknown) => boolean;
+    };
+    const action = component.userMutations[0];
+    expect(component.actionReady(action)).toBe(false);
+    const values = component.inputs['varlens-user-create'];
+    values['username'] = 'lab-user';
+    values['displayName'] = 'Lab User';
+    values['initialPassword'] = 'secret-init';
+    expect(component.actionReady(action)).toBe(true);
   });
 
   it('renders the DB-backed user administration table for admins', async () => {
