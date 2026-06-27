@@ -202,7 +202,7 @@ export const ACTIONS: readonly OperationAction[] = [
     title: 'Observability-Links',
     description:
       'Standardisierte Links und Queries für Grafana, Loki, Prometheus und ArgoCD anzeigen.',
-    role: 'first-level',
+    role: 'admin',
     kind: 'diagnostic',
     targetApp: 'varlens',
     inputs: [targetAppInput, targetEnvironmentInput],

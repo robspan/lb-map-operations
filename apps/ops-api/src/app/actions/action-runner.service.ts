@@ -352,7 +352,7 @@ export class ActionRunnerService {
       case 'observability-links':
         return this.observabilityLinks(contract);
       case 'escalation-bundle':
-        return this.escalationBundle(target, contract, inputs);
+        return this.escalationBundle(target, contract, inputs, principal);
       case 'argo-sync':
         return this.argoSync(target, contract);
       case 'rollout-restart':
@@ -819,6 +819,7 @@ export class ActionRunnerService {
     target: TargetConfig,
     contract: AppOperationsContract,
     inputs: Record<string, string>,
+    principal: OpsPrincipal,
   ) {
     const eventLimit = validateNumberOption(
       inputs.eventLimit,
@@ -845,6 +846,27 @@ export class ActionRunnerService {
       })),
       this.observabilityLinks(contract),
     ]);
+    if (!roleAllows(principal.roles, 'admin')) {
+      return {
+        summary: `Eskalationspaket für ${contract.app}/${contract.environment} zusammengestellt.`,
+        evidence: [
+          { label: 'App', value: contract.app },
+          { label: 'Umgebung', value: contract.environment },
+          { label: 'Zeitfenster', value: 'letzte 30 Minuten' },
+          { label: 'Status', value: health.summary },
+          {
+            label: 'Was First Level einsammeln soll',
+            value:
+              'Betroffener Nutzer, Zeitpunkt, Aktion/Route, sichtbare Fehlermeldung, Request-ID falls vorhanden.',
+          },
+          {
+            label: 'Nächster Schritt',
+            value:
+              'Mit diesen Angaben an interne IT eskalieren, wenn Nutzer weiterhin betroffen sind.',
+          },
+        ],
+      };
+    }
     return {
       summary: `Eskalationspaket für ${target.namespace} zusammengestellt.`,
       evidence: [

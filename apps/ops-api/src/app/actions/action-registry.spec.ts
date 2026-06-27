@@ -24,6 +24,7 @@ describe('action registry', () => {
     );
     expect(firstLevelActions).toContain('app-health');
     expect(firstLevelActions).toContain('escalation-bundle');
+    expect(firstLevelActions).not.toContain('observability-links');
     expect(firstLevelActions).not.toContain('argo-sync');
     expect(firstLevelActions).not.toContain('rollout-restart');
   });

@@ -74,7 +74,9 @@ export interface DiagnosisFacts {
   readonly collectionErrors: readonly ActionEvidence[];
 }
 
-type RemedyTemplate = Omit<SuggestedRemedy, 'enabled' | 'disabledReason'>;
+type RemedyTemplate = Omit<SuggestedRemedy, 'enabled' | 'disabledReason'> & {
+  readonly hideWhenUnauthorized?: boolean;
+};
 
 const REMEDIES = {
   argoSync: {
@@ -121,12 +123,13 @@ const REMEDIES = {
   },
   observabilityLinks: {
     remedyId: 'open-observability',
-    title: 'Observability-Links öffnen',
+    title: 'Technische Observability-Details öffnen',
     description:
       'Zeigt standardisierte Grafana-, Loki-, Prometheus- und ArgoCD-Hinweise.',
     actionId: 'observability-links',
-    requiredRole: 'first-level',
+    requiredRole: 'admin',
     risk: 'none',
+    hideWhenUnauthorized: true,
   },
   smokeResult: {
     remedyId: 'read-smoke-result',
@@ -204,14 +207,7 @@ export function buildDiagnosisReport(
           value: facts.observability?.metrics.length ?? 0,
         },
       ],
-      remedies: remedies(
-        roles,
-        REMEDIES.observabilityLinks,
-        REMEDIES.argoStatus,
-        REMEDIES.podSummary,
-        REMEDIES.smokeResult,
-        REMEDIES.escalationBundle,
-      ),
+      remedies: noObviousFaultRemedies(roles),
     });
   }
 
@@ -748,16 +744,36 @@ function remedies(
   roles: readonly OpsRole[],
   ...templates: readonly RemedyTemplate[]
 ): readonly SuggestedRemedy[] {
-  return templates.map((template) => {
+  return templates.flatMap((template) => {
     const enabled = roleAllows(roles, template.requiredRole);
+    if (!enabled && template.hideWhenUnauthorized) {
+      return [];
+    }
+    const { hideWhenUnauthorized, ...suggestedRemedy } = template;
+    void hideWhenUnauthorized;
     return {
-      ...template,
+      ...suggestedRemedy,
       enabled,
       disabledReason: enabled
         ? undefined
         : `Benötigt Rolle ${template.requiredRole}.`,
     };
   });
+}
+
+function noObviousFaultRemedies(roles: readonly OpsRole[]): readonly SuggestedRemedy[] {
+  if (roleAllows(roles, 'admin')) {
+    return remedies(
+      roles,
+      REMEDIES.observabilityLinks,
+      REMEDIES.argoStatus,
+      REMEDIES.podSummary,
+      REMEDIES.smokeResult,
+      REMEDIES.escalationBundle,
+    );
+  }
+
+  return remedies(roles, REMEDIES.smokeResult, REMEDIES.escalationBundle);
 }
 
 function argoSyncStatus(facts: DiagnosisFacts): string | undefined {

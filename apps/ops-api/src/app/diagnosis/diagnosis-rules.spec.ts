@@ -76,7 +76,6 @@ describe('diagnosis rules', () => {
     );
     expect(finding?.likelyCause).toContain('Ingress');
     expect(finding?.remedies.map((item) => item.actionId)).toEqual([
-      'observability-links',
       'escalation-bundle',
     ]);
   });
@@ -97,9 +96,6 @@ describe('diagnosis rules', () => {
     expect(
       report.findings[0].remedies.map((remedy) => remedy.actionId),
     ).toEqual([
-      'observability-links',
-      'argo-status',
-      'pod-summary',
       'smoke-result',
       'escalation-bundle',
     ]);
@@ -108,6 +104,25 @@ describe('diagnosis rules', () => {
         finding.remedies.map((remedy) => remedy.actionId),
       ),
     ).not.toContain('smoke-trigger');
+  });
+
+  it('keeps the full neutral diagnosis remedies for admins', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      healthyFacts(),
+      ['admin'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(
+      report.findings[0].remedies.map((remedy) => remedy.actionId),
+    ).toEqual([
+      'observability-links',
+      'argo-status',
+      'pod-summary',
+      'smoke-result',
+      'escalation-bundle',
+    ]);
   });
 
   it('does not infer missing pods or smoke results when collection failed', () => {
@@ -203,6 +218,9 @@ describe('diagnosis rules', () => {
       confidence: 'high',
     });
     expect(finding?.remedies.map((item) => item.actionId)).toContain(
+      'escalation-bundle',
+    );
+    expect(finding?.remedies.map((item) => item.actionId)).not.toContain(
       'observability-links',
     );
   });
