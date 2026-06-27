@@ -428,13 +428,8 @@ export class ActionRunnerService {
     const timeoutMs =
       validateSeconds(inputs.timeoutSeconds, 'timeoutSeconds') * 1000;
     const publicHealthUrl = contract.endpoints.publicHealthUrl;
-    const freshSmoke = await captureDiagnosisStep(
-      'smoke-run',
-      'Automatischen Funktionstest ausführen',
-      () => this.runFreshSmoke(target, contract, principal.user),
-      progress,
-    );
     const [
+      freshSmoke,
       deployment,
       pods,
       argo,
@@ -445,6 +440,12 @@ export class ActionRunnerService {
       prometheusMetrics,
       lokiLogs,
     ] = await Promise.all([
+      captureDiagnosisStep(
+        'smoke-run',
+        'Automatischen Funktionstest ausführen',
+        () => this.runFreshSmoke(target, contract, principal.user),
+        progress,
+      ),
       captureDiagnosisStep(
         'deployment',
         'App-Startzustand prüfen',
@@ -538,7 +539,9 @@ export class ActionRunnerService {
       argo: argo.value,
       deployment: deployment.value,
       pods: pods.value || [],
-      smokeJobs: smokeJobs.value || [],
+      smokeJobs: freshSmoke.value
+        ? [...(smokeJobs.value || []), freshSmoke.value]
+        : smokeJobs.value || [],
       endpoints: {
         liveness: liveness.value,
         readiness: readiness.value,
