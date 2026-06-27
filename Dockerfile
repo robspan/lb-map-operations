@@ -6,7 +6,6 @@ COPY apps ./apps
 COPY eslint.config.mjs .prettierrc .prettierignore ./
 RUN npm ci
 RUN npx nx run-many -t build -p ops-contract,ops-ui,ops-api
-RUN npx nx run ops-api:prune
 RUN mkdir -p dist/apps/ops-api/public \
   && cp -R dist/apps/ops-ui/browser/. dist/apps/ops-api/public/
 
@@ -19,7 +18,7 @@ ENV OPS_UI_PUBLIC_DIR=/app/public
 
 WORKDIR /app
 COPY --from=build /workspace/dist/apps/ops-api/package.json /workspace/dist/apps/ops-api/package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev --package-lock=false
 COPY --from=build /workspace/dist/apps/ops-api ./
 
 EXPOSE 3000 9090
