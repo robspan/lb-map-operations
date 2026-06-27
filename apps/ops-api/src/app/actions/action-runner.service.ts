@@ -59,11 +59,87 @@ type CreatedResource = {
 type JobLike = {
   readonly metadata?: {
     readonly name?: string;
+    readonly creationTimestamp?: string;
   };
   readonly status?: {
     readonly active?: number;
     readonly failed?: number;
     readonly succeeded?: number;
+    readonly phase?: string;
+    readonly startedAt?: string;
+    readonly completionTime?: string;
+  };
+};
+
+type KubernetesListLike<T> = {
+  readonly items?: readonly T[];
+};
+
+type ConditionLike = {
+  readonly type?: string;
+  readonly status?: string;
+  readonly reason?: string;
+  readonly message?: string;
+};
+
+type ClusterLike = {
+  readonly metadata?: {
+    readonly name?: string;
+  };
+  readonly spec?: {
+    readonly instances?: number;
+  };
+  readonly status?: {
+    readonly phase?: string;
+    readonly instances?: number;
+    readonly readyInstances?: number;
+    readonly currentPrimary?: string;
+    readonly targetPrimary?: string;
+    readonly conditions?: readonly ConditionLike[];
+  };
+};
+
+type IngressLike = {
+  readonly metadata?: {
+    readonly name?: string;
+  };
+  readonly spec?: {
+    readonly ingressClassName?: string;
+    readonly tls?: readonly {
+      readonly hosts?: readonly string[];
+      readonly secretName?: string;
+    }[];
+    readonly rules?: readonly {
+      readonly host?: string;
+    }[];
+  };
+};
+
+type CertificateLike = {
+  readonly metadata?: {
+    readonly name?: string;
+  };
+  readonly status?: {
+    readonly conditions?: readonly ConditionLike[];
+    readonly notAfter?: string;
+    readonly renewalTime?: string;
+  };
+};
+
+type BackupLike = {
+  readonly metadata?: {
+    readonly name?: string;
+    readonly creationTimestamp?: string;
+  };
+  readonly spec?: {
+    readonly cluster?: {
+      readonly name?: string;
+    };
+  };
+  readonly status?: {
+    readonly phase?: string;
+    readonly startedAt?: string;
+    readonly stoppedAt?: string;
   };
 };
 
@@ -351,6 +427,16 @@ export class ActionRunnerService {
         return this.smokeResult(target, contract, inputs);
       case 'observability-links':
         return this.observabilityLinks(contract);
+      case 'platform-overview':
+        return this.platformOverview(target, contract, inputs);
+      case 'data-store-status':
+        return this.dataStoreStatus(target);
+      case 'ingress-status':
+        return this.ingressStatus(target, contract);
+      case 'backup-status':
+        return this.backupStatus(target);
+      case 'observability-status':
+        return this.observabilityStatus(contract);
       case 'escalation-bundle':
         return this.escalationBundle(target, contract, inputs, principal);
       case 'argo-sync':
@@ -815,6 +901,210 @@ export class ActionRunnerService {
     };
   }
 
+  private async platformOverview(
+    target: TargetConfig,
+    contract: AppOperationsContract,
+    inputs: Record<string, string>,
+  ) {
+    const [health, argo, smoke] = await Promise.all([
+      this.appHealth(target, contract, inputs),
+      this.argoStatus(target, contract, {
+        detailLevel: 'summary',
+        resourceLimit: '10',
+      }).catch((error) => ({
+        summary: `ArgoCD konnte nicht gelesen werden: ${message(error)}`,
+        evidence: [{ label: 'ArgoCD-Fehler', value: message(error) }],
+      })),
+      this.smokeResult(target, contract, { jobLimit: '5' }).catch((error) => ({
+        summary: `Smoke-Status konnte nicht gelesen werden: ${message(error)}`,
+        evidence: [{ label: 'Smoke-Fehler', value: message(error) }],
+      })),
+    ]);
+    return {
+      summary: `Betriebsüberblick für ${target.namespace}: ${health.summary}`,
+      evidence: [
+        { label: 'Namespace', value: target.namespace },
+        { label: 'Deployment', value: target.deployment },
+        { label: 'Service', value: target.serviceName },
+        { label: 'App-Status', value: health.summary },
+        { label: 'GitOps-Status', value: argo.summary },
+        { label: 'Smoke-Status', value: smoke.summary },
+        ...health.evidence.slice(0, 8),
+        ...argo.evidence.slice(0, 6),
+        ...smoke.evidence.slice(0, 6),
+      ],
+    };
+  }
+
+  private async dataStoreStatus(target: TargetConfig) {
+    const clusterName = `${target.serviceName}-postgres`;
+    const cluster = await capture(() =>
+      this.kubernetes.getPath<ClusterLike>(
+        `/apis/postgresql.cnpg.io/v1/namespaces/${target.namespace}/clusters/${clusterName}`,
+      ),
+    );
+    if (cluster.error || !cluster.value) {
+      return {
+        summary: `Datenbank-Cluster ${clusterName} konnte nicht gelesen werden.`,
+        evidence: [
+          { label: 'Cluster', value: clusterName },
+          { label: 'Fehler', value: cluster.error || 'nicht gefunden' },
+        ],
+      };
+    }
+
+    const status = cluster.value.status || {};
+    const conditions = (status.conditions || [])
+      .map((condition) =>
+        [condition.type, condition.status, condition.reason]
+          .filter(Boolean)
+          .join('='),
+      )
+      .filter(Boolean)
+      .join(', ');
+    return {
+      summary: `Datenbank-Cluster ${clusterName}: ${status.phase || 'unbekannt'}; ${status.readyInstances ?? 0}/${cluster.value.spec?.instances ?? status.instances ?? 0} Instanzen bereit.`,
+      evidence: [
+        { label: 'Namespace', value: target.namespace },
+        { label: 'Cluster', value: cluster.value.metadata?.name || clusterName },
+        { label: 'Phase', value: status.phase || null },
+        { label: 'Instanzen', value: cluster.value.spec?.instances ?? status.instances ?? null },
+        { label: 'Bereite Instanzen', value: status.readyInstances ?? null },
+        { label: 'Aktueller Primary', value: status.currentPrimary || null },
+        { label: 'Ziel-Primary', value: status.targetPrimary || null },
+        { label: 'Conditions', value: conditions || null },
+        {
+          label: 'Datenschutzgrenze',
+          value: 'Nur Cluster-Metadaten; keine Tabellen, Dumps, Zugangsdaten oder Nutzdaten.',
+        },
+      ],
+    };
+  }
+
+  private async ingressStatus(
+    target: TargetConfig,
+    contract: AppOperationsContract,
+  ) {
+    const [ingresses, certificates] = await Promise.all([
+      capture(() =>
+        this.kubernetes.getPath<KubernetesListLike<IngressLike>>(
+          `/apis/networking.k8s.io/v1/namespaces/${target.namespace}/ingresses`,
+        ),
+      ),
+      capture(() =>
+        this.kubernetes.getPath<KubernetesListLike<CertificateLike>>(
+          `/apis/cert-manager.io/v1/namespaces/${target.namespace}/certificates`,
+        ),
+      ),
+    ]);
+    const ingressItems = ingresses.value?.items || [];
+    const certificateItems = certificates.value?.items || [];
+    const hosts = ingressItems.flatMap((ingress) =>
+      (ingress.spec?.rules || []).map((rule) => rule.host).filter(Boolean),
+    );
+    const tlsRefs = ingressItems.flatMap((ingress) =>
+      (ingress.spec?.tls || []).map((tls) =>
+        [tls.secretName, ...(tls.hosts || [])].filter(Boolean).join(' -> '),
+      ),
+    );
+    const certEvidence = certificateItems.map((certificate) => ({
+      label: `Zertifikat ${certificate.metadata?.name || 'unbekannt'}`,
+      value: certificateStatus(certificate),
+    }));
+    return {
+      summary: `${ingressItems.length} Ingress(e), ${certificateItems.length} Zertifikat(e) in ${target.namespace}.`,
+      evidence: [
+        { label: 'Öffentliche Health-URL', value: contract.endpoints.publicHealthUrl || null },
+        { label: 'Ingress-Fehler', value: ingresses.error || null },
+        { label: 'Zertifikat-Fehler', value: certificates.error || null },
+        { label: 'Hosts', value: hosts.length ? hosts.join(', ') : null },
+        { label: 'TLS-Referenzen', value: tlsRefs.length ? tlsRefs.join(', ') : null },
+        ...ingressItems.map((ingress) => ({
+          label: `Ingress ${ingress.metadata?.name || 'unbekannt'}`,
+          value: ingress.spec?.ingressClassName || 'ohne explizite Klasse',
+        })),
+        ...certEvidence,
+      ].filter((item) => item.value !== null),
+    };
+  }
+
+  private async backupStatus(target: TargetConfig) {
+    const [backups, scheduledBackups] = await Promise.all([
+      capture(() =>
+        this.kubernetes.getPath<KubernetesListLike<BackupLike>>(
+          `/apis/postgresql.cnpg.io/v1/namespaces/${target.namespace}/backups`,
+        ),
+      ),
+      capture(() =>
+        this.kubernetes.getPath<KubernetesListLike<BackupLike>>(
+          `/apis/postgresql.cnpg.io/v1/namespaces/${target.namespace}/scheduledbackups`,
+        ),
+      ),
+    ]);
+    const backupItems = backups.value?.items || [];
+    const scheduledItems = scheduledBackups.value?.items || [];
+    const latestBackup = [...backupItems].sort(compareCreatedAt).at(-1);
+    return {
+      summary: `${backupItems.length} Backup-CR(s), ${scheduledItems.length} ScheduledBackup-CR(s) in ${target.namespace}.`,
+      evidence: [
+        { label: 'Namespace', value: target.namespace },
+        { label: 'Backup-Fehler', value: backups.error || null },
+        { label: 'ScheduledBackup-Fehler', value: scheduledBackups.error || null },
+        { label: 'Backups', value: backupItems.length },
+        { label: 'ScheduledBackups', value: scheduledItems.length },
+        {
+          label: 'Letztes Backup',
+          value: latestBackup
+            ? `${latestBackup.metadata?.name || 'unbekannt'}: ${latestBackup.status?.phase || 'unbekannt'}`
+            : null,
+        },
+        ...scheduledItems.slice(0, 5).map((backup) => ({
+          label: `Plan ${backup.metadata?.name || 'unbekannt'}`,
+          value: backup.spec?.cluster?.name || target.serviceName,
+        })),
+        {
+          label: 'Datenschutzgrenze',
+          value: 'Nur Backup-Objektstatus; keine Backup-Inhalte, Dumps oder Wiederherstellung.',
+        },
+      ].filter((item) => item.value !== null),
+    };
+  }
+
+  private observabilityStatus(contract: AppOperationsContract) {
+    const metrics = contract.observability.prometheusMetrics.map((metric) => metric.name);
+    return {
+      summary: `${metrics.length} Prometheus-Metriken, ${contract.observability.grafanaDashboards.length} Dashboard(s), Loki ${contract.observability.lokiBaseUrl ? 'konfiguriert' : 'nicht konfiguriert'}.`,
+      evidence: [
+        {
+          label: 'Prometheus',
+          value: contract.observability.prometheusBaseUrl ? 'konfiguriert' : 'nicht konfiguriert',
+        },
+        {
+          label: 'Prometheus-Metriken',
+          value: metrics.length ? metrics.join(', ') : null,
+        },
+        {
+          label: 'Loki',
+          value: contract.observability.lokiBaseUrl ? 'konfiguriert' : 'nicht konfiguriert',
+        },
+        {
+          label: 'Log-Pflichtfelder',
+          value: contract.observability.loki.requiredFields.join(', '),
+        },
+        {
+          label: 'Dashboards',
+          value: contract.observability.grafanaDashboards
+            .map((dashboard) => dashboard.label)
+            .join(', ') || null,
+        },
+        {
+          label: 'Eskalationsfelder',
+          value: contract.firstLevel.escalationFields.join(', '),
+        },
+      ],
+    };
+  }
+
   private async escalationBundle(
     target: TargetConfig,
     contract: AppOperationsContract,
@@ -1074,6 +1364,22 @@ function restartCount(pod: {
     (sum, status) => sum + (status.restartCount || 0),
     0,
   );
+}
+
+function certificateStatus(certificate: CertificateLike): string {
+  const ready = (certificate.status?.conditions || []).find(
+    (condition) => condition.type === 'Ready',
+  );
+  return [
+    ready ? `Ready=${ready.status}` : 'Ready=unbekannt',
+    ready?.reason,
+    certificate.status?.notAfter ? `bis ${certificate.status.notAfter}` : null,
+    certificate.status?.renewalTime
+      ? `Erneuerung ${certificate.status.renewalTime}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
 }
 
 function truncate(value: string, maxLength: number): string {

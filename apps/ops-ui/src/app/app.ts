@@ -48,6 +48,16 @@ const ACTION_HELP: Record<string, string> = {
     'Zeigt die letzten in-cluster Smoke-Jobs und deren Ergebnis. Nutzen, um zu sehen, ob automatische Health-Checks zuletzt erfolgreich waren.',
   'observability-links':
     'Liefert die standardisierten Links und Queries für Grafana, Loki, Prometheus und ArgoCD der Ziel-App. Nutzen, um direkt in die richtigen Dashboards zu springen.',
+  'platform-overview':
+    'Bündelt App-Laufzeit, GitOps und Smoke-Status für den täglichen Betriebsüberblick.',
+  'data-store-status':
+    'Zeigt nur den technischen Status des Datenbank-Clusters. Es werden keine Nutzdaten, Dumps oder Zugangsdaten gelesen.',
+  'ingress-status':
+    'Prüft Ingress, Hosts, TLS-Verweise und Zertifikatsstatus der Ziel-App.',
+  'backup-status':
+    'Zeigt Backup- und ScheduledBackup-Objektstatus, ohne Backup-Inhalte oder Dumps zu lesen.',
+  'observability-status':
+    'Fasst die standardisierten Metriken, Logs und Dashboards aus dem App-Vertrag zusammen.',
   'escalation-bundle':
     'Bündelt Status, Pods, Events und ArgoCD-Zustand in einem Paket – ideal zum Anhängen an eine Eskalation an die interne IT.',
   'argo-sync':
@@ -122,7 +132,11 @@ export class App implements OnInit {
   loginPassword = '';
   users: OpsUserSummary[] = [];
   userError = '';
-  auditEvents: OpsAuditEvent[] = [];
+  auditEvents: readonly OpsAuditEvent[] = [];
+  auditLimit = 25;
+  auditOffset = 0;
+  auditTotal = 0;
+  auditLoading = false;
   auditError = '';
   newUser = {
     username: '',
@@ -206,6 +220,8 @@ export class App implements OnInit {
         this.roles = [];
         this.users = [];
         this.auditEvents = [];
+        this.auditOffset = 0;
+        this.auditTotal = 0;
         this.activeView = 'diagnose';
         this.loadError = 'Anmeldung erforderlich.';
         this.changeDetector.detectChanges();
@@ -250,18 +266,54 @@ export class App implements OnInit {
     });
   }
 
-  loadAudit(): void {
+  loadAudit(offset = this.auditOffset): void {
     this.auditError = '';
-    this.api.auditEvents(100).subscribe({
-      next: ({ events }) => {
+    this.auditLoading = true;
+    this.api.auditEvents(this.auditLimit, offset).subscribe({
+      next: ({ events, total, limit, offset }) => {
         this.auditEvents = events;
+        this.auditTotal = total;
+        this.auditLimit = limit;
+        this.auditOffset = offset;
+        this.auditLoading = false;
         this.changeDetector.detectChanges();
       },
       error: () => {
+        this.auditLoading = false;
         this.auditError = 'Audit-Ereignisse konnten nicht geladen werden.';
         this.changeDetector.detectChanges();
       },
     });
+  }
+
+  previousAuditPage(): void {
+    if (!this.auditCanPrev()) {
+      return;
+    }
+    this.loadAudit(Math.max(0, this.auditOffset - this.auditLimit));
+  }
+
+  nextAuditPage(): void {
+    if (!this.auditCanNext()) {
+      return;
+    }
+    this.loadAudit(this.auditOffset + this.auditLimit);
+  }
+
+  auditCanPrev(): boolean {
+    return !this.auditLoading && this.auditOffset > 0;
+  }
+
+  auditCanNext(): boolean {
+    return !this.auditLoading && this.auditOffset + this.auditLimit < this.auditTotal;
+  }
+
+  auditPageStart(): number {
+    return this.auditTotal === 0 ? 0 : this.auditOffset + 1;
+  }
+
+  auditPageEnd(): number {
+    return Math.min(this.auditOffset + this.auditEvents.length, this.auditTotal);
   }
 
   createUser(): void {

@@ -238,8 +238,24 @@
     <section class="admin-table">
       <div class="admin-section-head">
         <h2>Audit-Aktivität</h2>
-        <button mat-stroked-button type="button" (click)="loadAudit()">Aktualisieren</button>
+        <div class="audit-controls">
+          <span class="audit-range">
+            {{ auditPageStart() }}-{{ auditPageEnd() }} von {{ auditTotal }}
+          </span>
+          <button mat-stroked-button type="button" (click)="previousAuditPage()" [disabled]="!auditCanPrev()">
+            Zurück
+          </button>
+          <button mat-stroked-button type="button" (click)="nextAuditPage()" [disabled]="!auditCanNext()">
+            Weiter
+          </button>
+          <button mat-stroked-button type="button" (click)="loadAudit()" [disabled]="auditLoading">
+            Aktualisieren
+          </button>
+        </div>
       </div>
+      @if (auditLoading) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      }
       <table aria-label="Audit-Aktivität">
         <thead>
           <tr>

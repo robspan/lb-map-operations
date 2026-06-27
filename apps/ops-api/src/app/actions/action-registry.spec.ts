@@ -12,6 +12,11 @@ describe('action registry', () => {
       'log-summary',
       'smoke-result',
       'observability-links',
+      'platform-overview',
+      'data-store-status',
+      'ingress-status',
+      'backup-status',
+      'observability-status',
       'escalation-bundle',
       'argo-sync',
       'rollout-restart',
@@ -25,6 +30,8 @@ describe('action registry', () => {
     expect(firstLevelActions).toContain('app-health');
     expect(firstLevelActions).toContain('escalation-bundle');
     expect(firstLevelActions).not.toContain('observability-links');
+    expect(firstLevelActions).not.toContain('platform-overview');
+    expect(firstLevelActions).not.toContain('data-store-status');
     expect(firstLevelActions).not.toContain('argo-sync');
     expect(firstLevelActions).not.toContain('rollout-restart');
   });

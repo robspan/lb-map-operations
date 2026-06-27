@@ -27,6 +27,17 @@ export interface AuditEventSummary {
   readonly metadata: Record<string, string | number | boolean | null>;
 }
 
+export interface AuditEventPage {
+  readonly events: readonly AuditEventSummary[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+interface CountRecord {
+  readonly total: string | number;
+}
+
 interface AuditEventRecord {
   readonly id: string;
   readonly occurred_at: Date;
@@ -84,30 +95,43 @@ export class AuditService {
     await this.pruneOldEvents();
   }
 
-  async listRecent(limit = 100): Promise<AuditEventSummary[]> {
-    const boundedLimit = Math.max(1, Math.min(limit, 500));
-    const result = await this.db.query<AuditEventRecord>(
-      `
-        SELECT id::text, occurred_at, actor, role, action, target_app,
-               target_environment, result, run_id, metadata
-        FROM ops_audit_events
-        ORDER BY occurred_at DESC
-        LIMIT $1
-      `,
-      [boundedLimit],
-    );
-    return result.rows.map((row) => ({
-      id: row.id,
-      occurredAt: row.occurred_at.toISOString(),
-      actor: row.actor || undefined,
-      role: row.role || undefined,
-      action: row.action,
-      targetApp: row.target_app || undefined,
-      targetEnvironment: row.target_environment || undefined,
-      result: row.result,
-      runId: row.run_id || undefined,
-      metadata: row.metadata || {},
-    }));
+  async listRecent(limit = 25, offset = 0): Promise<AuditEventPage> {
+    const boundedLimit = Math.max(1, Math.min(limit, 100));
+    const boundedOffset = Math.max(0, offset);
+    const [countResult, result] = await Promise.all([
+      this.db.query<CountRecord>(
+        'SELECT count(*) AS total FROM ops_audit_events',
+      ),
+      this.db.query<AuditEventRecord>(
+        `
+          SELECT id::text, occurred_at, actor, role, action, target_app,
+                 target_environment, result, run_id, metadata
+          FROM ops_audit_events
+          ORDER BY occurred_at DESC
+          LIMIT $1
+          OFFSET $2
+        `,
+        [boundedLimit, boundedOffset],
+      ),
+    ]);
+    const total = Number(countResult.rows[0]?.total || 0);
+    return {
+      events: result.rows.map((row) => ({
+        id: row.id,
+        occurredAt: row.occurred_at.toISOString(),
+        actor: row.actor || undefined,
+        role: row.role || undefined,
+        action: row.action,
+        targetApp: row.target_app || undefined,
+        targetEnvironment: row.target_environment || undefined,
+        result: row.result,
+        runId: row.run_id || undefined,
+        metadata: row.metadata || {},
+      })),
+      total: Number.isFinite(total) ? total : 0,
+      limit: boundedLimit,
+      offset: boundedOffset,
+    };
   }
 
   private async pruneOldEvents(): Promise<void> {

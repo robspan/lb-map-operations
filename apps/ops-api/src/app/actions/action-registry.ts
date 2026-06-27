@@ -208,6 +208,56 @@ export const ACTIONS: readonly OperationAction[] = [
     inputs: [targetAppInput, targetEnvironmentInput],
   },
   {
+    id: 'platform-overview',
+    title: 'Betriebsüberblick',
+    description:
+      'GitOps-, Deployment-, Pod-, Endpoint- und Smoke-Zustand der Ziel-App zusammenfassen.',
+    role: 'admin',
+    kind: 'diagnostic',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput, timeoutSecondsInput],
+  },
+  {
+    id: 'data-store-status',
+    title: 'Datenbank-Status',
+    description:
+      'Nur technischen CloudNativePG-Clusterstatus lesen; keine Nutzdaten oder Zugangsdaten.',
+    role: 'admin',
+    kind: 'diagnostic',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput],
+  },
+  {
+    id: 'ingress-status',
+    title: 'Ingress und Zertifikat',
+    description:
+      'Öffentliche Routen, TLS-Verweise und Zertifikatsstatus der Ziel-App lesen.',
+    role: 'admin',
+    kind: 'diagnostic',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput],
+  },
+  {
+    id: 'backup-status',
+    title: 'Backup-Status',
+    description:
+      'App-nahe Backup- und ScheduledBackup-CRs zusammenfassen, ohne Backup-Inhalte zu lesen.',
+    role: 'admin',
+    kind: 'diagnostic',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput],
+  },
+  {
+    id: 'observability-status',
+    title: 'Observability-Status',
+    description:
+      'Standardisierte Metriken, Logs und Dashboards aus dem App-Vertrag zusammenfassen.',
+    role: 'admin',
+    kind: 'diagnostic',
+    targetApp: 'varlens',
+    inputs: [targetAppInput, targetEnvironmentInput],
+  },
+  {
     id: 'escalation-bundle',
     title: 'Eskalationspaket',
     description:

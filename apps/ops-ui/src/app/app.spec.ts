@@ -205,7 +205,7 @@ describe('App', () => {
       [diagnostic],
       'audit'
     );
-    http.expectOne('/api/audit/events?limit=100').flush({
+    http.expectOne('/api/audit/events?limit=25&offset=0').flush({
       events: [
         {
           id: '2',
@@ -217,12 +217,16 @@ describe('App', () => {
           metadata: {},
         },
       ],
+      total: 1,
+      limit: 25,
+      offset: 0,
     });
     await fixture.whenStable();
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Audit-Aktivität');
+    expect(compiled.textContent).toContain('1-1 von 1');
     expect(compiled.textContent).toContain('auth-login');
     expect(compiled.textContent).toContain('ops-admin');
   });

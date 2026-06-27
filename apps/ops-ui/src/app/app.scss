@@ -210,6 +210,18 @@ $blue: #1565c0;
   color: $ink;
 }
 
+.audit-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.audit-range {
+  white-space: nowrap;
+}
+
 .admin-table {
   overflow-x: auto;
 }

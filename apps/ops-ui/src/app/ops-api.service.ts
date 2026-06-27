@@ -30,8 +30,10 @@ export class OpsApiService {
     return this.http.get<{ users: OpsUserSummary[] }>('/api/auth/users');
   }
 
-  auditEvents(limit = 100) {
-    return this.http.get<{ events: OpsAuditEvent[] }>(`/api/audit/events?limit=${limit}`);
+  auditEvents(limit = 25, offset = 0) {
+    return this.http.get<OpsAuditPage>(
+      `/api/audit/events?limit=${limit}&offset=${offset}`
+    );
   }
 
   createUser(input: {
@@ -151,4 +153,11 @@ export interface OpsAuditEvent {
   readonly result: 'success' | 'failure' | 'rejected' | 'started';
   readonly runId?: string;
   readonly metadata: Record<string, string | number | boolean | null>;
+}
+
+export interface OpsAuditPage {
+  readonly events: readonly OpsAuditEvent[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
 }
