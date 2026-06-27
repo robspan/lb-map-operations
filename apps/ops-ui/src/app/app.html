@@ -294,7 +294,7 @@
 
       @if (loaded && !loadError && activeView === 'operations' && isAdmin()) {
         <main class="shell">
-          <div class="actions" aria-label="Operationen">
+          <section class="actions" aria-label="Operationen">
             <ng-template #actionTile let-action>
               <article
                 class="action"
@@ -397,19 +397,6 @@
               </article>
             </ng-template>
 
-            <section class="group">
-              <header class="group-head">
-                <h2>Status prüfen</h2>
-                <span class="group-note">Admin</span>
-                <app-info [text]="uiHelp.diagnose" />
-              </header>
-              @for (action of diagnostics; track action.id) {
-                <ng-container *ngTemplateOutlet="actionTile; context: { $implicit: action }"></ng-container>
-              } @empty {
-                <p class="muted empty">Keine adminfähigen Statusabfragen konfiguriert.</p>
-              }
-            </section>
-
             @if (userMutations.length) {
               <section class="group">
                 <header class="group-head">
@@ -437,9 +424,22 @@
                 }
               </section>
             }
-          </div>
 
-          <aside class="results" aria-label="Ergebnis">
+            @if (diagnostics.length) {
+              <section class="group">
+                <header class="group-head">
+                  <h2>Prüfen und Nachsehen</h2>
+                  <span class="group-note">nur lesend</span>
+                  <app-info [text]="uiHelp.diagnose" />
+                </header>
+                @for (action of diagnostics; track action.id) {
+                  <ng-container *ngTemplateOutlet="actionTile; context: { $implicit: action }"></ng-container>
+                }
+              </section>
+            }
+          </section>
+
+          <section class="results" aria-label="Ergebnis">
             @if (runError) {
               <p class="banner error">{{ runError }}</p>
             }
@@ -480,7 +480,7 @@
                   </div>
                 </div>
               } @else {
-                <p class="muted empty">Noch keine Aktion ausgeführt. Wähle links eine Operation.</p>
+                <p class="muted empty">Noch keine Aktion ausgeführt.</p>
               }
             </section>
 
@@ -513,7 +513,7 @@
                 </ul>
               </section>
             }
-          </aside>
+          </section>
         </main>
       }
     </div>

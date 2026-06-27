@@ -277,12 +277,12 @@
   color: #3a4855;
 }
 
-/* operations: two-column tiles */
+/* operations: dense top-to-bottom operator workflow */
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  gap: 22px;
-  max-width: 1320px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 26px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 16px 24px 36px;
 }
@@ -391,7 +391,7 @@
 
 .results {
   display: grid;
-  gap: 20px;
+  gap: 24px;
   align-content: start;
 }
 .result h2,

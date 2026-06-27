@@ -347,7 +347,7 @@ describe('App', () => {
   it('renders VarLens user lifecycle actions as the primary admin operation block', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
-      [varlensUserMutation, mutation]
+      [diagnostic, varlensUserMutation, mutation]
     );
     await fixture.whenStable();
     fixture.detectChanges();
@@ -356,6 +356,14 @@ describe('App', () => {
     expect(compiled.textContent).toContain('VarLens-Nutzer verwalten');
     expect(compiled.textContent).toContain('VarLens-Nutzer anlegen');
     expect(compiled.textContent).toContain('Plattform-Eingriffe');
+    expect(compiled.textContent).toContain('Prüfen und Nachsehen');
+    const pageText = compiled.textContent || '';
+    expect(pageText.indexOf('VarLens-Nutzer verwalten')).toBeLessThan(
+      pageText.indexOf('Plattform-Eingriffe')
+    );
+    expect(pageText.indexOf('Plattform-Eingriffe')).toBeLessThan(
+      pageText.indexOf('Prüfen und Nachsehen')
+    );
 
     const runButtons = compiled.querySelectorAll('[data-testid="run-action"]');
     (runButtons[0] as HTMLButtonElement).click();
