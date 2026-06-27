@@ -5,6 +5,7 @@ import {
   ActionRunResponse,
   ActionsResponse,
   ContractsResponse,
+  DiagnosisRepairResponse,
   DiagnosisStreamEvent,
   MeResponse,
   TargetApp,
@@ -22,7 +23,10 @@ export class OpsApiService {
   }
 
   login(username: string, password: string) {
-    return this.http.post<MeResponse>('/api/auth/login', { username, password });
+    return this.http.post<MeResponse>('/api/auth/login', {
+      username,
+      password,
+    });
   }
 
   logout() {
@@ -35,7 +39,7 @@ export class OpsApiService {
 
   auditEvents(limit = 25, offset = 0) {
     return this.http.get<OpsAuditPage>(
-      `/api/audit/events?limit=${limit}&offset=${offset}`
+      `/api/audit/events?limit=${limit}&offset=${offset}`,
     );
   }
 
@@ -52,15 +56,18 @@ export class OpsApiService {
   resetPassword(username: string, password: string) {
     return this.http.post<{ user: OpsUserSummary }>(
       `/api/auth/users/${encodeURIComponent(username)}/reset-password`,
-      { password }
+      { password },
     );
   }
 
   setUserActive(username: string, active: boolean) {
-    return this.http.post<{ user: OpsUserSummary }>('/api/auth/users/set-active', {
-      username,
-      active,
-    });
+    return this.http.post<{ user: OpsUserSummary }>(
+      '/api/auth/users/set-active',
+      {
+        username,
+        active,
+      },
+    );
   }
 
   actions() {
@@ -70,8 +77,8 @@ export class OpsApiService {
   varlensUsers(app: TargetApp, environment: TargetEnvironment) {
     return this.http.get<VarLensUsersResponse>(
       `/api/apps/${encodeURIComponent(app)}/environments/${encodeURIComponent(
-        environment
-      )}/varlens-users`
+        environment,
+      )}/varlens-users`,
     );
   }
 
@@ -80,7 +87,17 @@ export class OpsApiService {
   }
 
   run(actionId: string, request: ActionRunRequest) {
-    return this.http.post<ActionRunResponse>(`/api/actions/${actionId}/runs`, request);
+    return this.http.post<ActionRunResponse>(
+      `/api/actions/${actionId}/runs`,
+      request,
+    );
+  }
+
+  repairDiagnosis(request: ActionRunRequest) {
+    return this.http.post<DiagnosisRepairResponse>(
+      '/api/diagnosis/repair',
+      request,
+    );
   }
 
   /**
@@ -93,12 +110,15 @@ export class OpsApiService {
 
       (async () => {
         try {
-          const response = await fetch('/api/actions/diagnose-target/runs/stream', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(request),
-            signal: controller.signal,
-          });
+          const response = await fetch(
+            '/api/actions/diagnose-target/runs/stream',
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(request),
+              signal: controller.signal,
+            },
+          );
           if (!response.ok || !response.body) {
             throw new Error(`HTTP ${response.status}`);
           }
@@ -117,7 +137,9 @@ export class OpsApiService {
             while (boundary !== -1) {
               const block = buffer.slice(0, boundary);
               buffer = buffer.slice(boundary + 2);
-              const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+              const dataLine = block
+                .split('\n')
+                .find((line) => line.startsWith('data:'));
               if (dataLine) {
                 try {
                   subscriber.next(JSON.parse(dataLine.slice(5).trim()));

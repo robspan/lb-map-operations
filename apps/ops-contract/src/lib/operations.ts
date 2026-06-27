@@ -236,6 +236,15 @@ export interface DiagnosisReport {
   readonly findings: readonly DiagnosisFinding[];
 }
 
+export interface DiagnosisRepairResponse {
+  readonly beforeRun: ActionRunResult;
+  readonly repairRuns: readonly ActionRunResult[];
+  readonly afterRun: ActionRunResult;
+  readonly resolvedFindingIds: readonly string[];
+  readonly remainingFindingIds: readonly string[];
+  readonly summary: string;
+}
+
 export interface DiagnosisStepEvent {
   readonly stepId: string;
   readonly label: string;
@@ -267,10 +276,7 @@ export type DiagnosisStreamEvent =
       readonly message: string;
     };
 
-export const OPS_ROLE_ORDER: readonly OpsRole[] = [
-  'first-level',
-  'admin',
-];
+export const OPS_ROLE_ORDER: readonly OpsRole[] = ['first-level', 'admin'];
 
 export const REQUIRED_SIGNAL_SOURCES: readonly OperationsSignalSource[] = [
   'http',

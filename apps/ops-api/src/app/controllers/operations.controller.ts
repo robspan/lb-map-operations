@@ -14,6 +14,7 @@ import {
   ActionRunResponse,
   ActionsResponse,
   ContractsResponse,
+  DiagnosisRepairResponse,
   MeResponse,
   TargetApp,
   TargetEnvironment,
@@ -105,6 +106,15 @@ export class OperationsController {
     return {
       run: await this.runner.run(actionId, body, principal),
     };
+  }
+
+  @Post('diagnosis/repair')
+  async repairDiagnosis(
+    @Body() body: ActionRunRequest,
+    @Req() request: Request,
+  ): Promise<DiagnosisRepairResponse> {
+    const principal = await this.identity.principalFromRequest(request);
+    return this.runner.repairDiagnosis(body, principal);
   }
 
   @Get('runs/:runId')

@@ -10,10 +10,13 @@ import {
   ActionRunRequest,
   ActionRunResult,
   AppOperationsContract,
+  DiagnosisFinding,
   DiagnosisReport,
+  DiagnosisRepairResponse,
   DiagnosisStepEvent,
   DiagnosisStreamEvent,
   OpsPrincipal,
+  SuggestedRemedy,
   TargetApp,
   TargetEnvironment,
   VarLensUserSummary,
@@ -22,10 +25,7 @@ import {
 import { ArgoClient } from '../clients/argo.client';
 import { AuditService } from '../audit/audit.service';
 import { KubernetesClient } from '../clients/kubernetes.client';
-import {
-  LokiClient,
-  LokiLogObservation,
-} from '../clients/loki.client';
+import { LokiClient, LokiLogObservation } from '../clients/loki.client';
 import {
   PrometheusClient,
   PrometheusMetricObservation,
@@ -178,8 +178,16 @@ type Captured<T> = {
 
 type DiagnosisProgress = (step: DiagnosisStepEvent) => Promise<void> | void;
 
+type AutoRepairStep = {
+  readonly actionId: 'argo-sync' | 'rollout-restart';
+  readonly remedyId: string;
+  readonly title: string;
+  readonly inputs: Record<string, string>;
+};
+
 const DIAGNOSIS_STEP_SPREAD_MS = 300;
 const WORKSPACE_DB_URLS_SECRET = 'varlens-workspace-db-urls';
+const AUTO_REPAIR_ACTION_IDS = new Set(['argo-sync', 'rollout-restart']);
 
 const VARLENS_USER_CREATE_SCRIPT = String.raw`
 set -euo pipefail
@@ -491,7 +499,10 @@ export class ActionRunnerService {
       this.identity.requireRole(principal, action.role);
     }
 
-    const target = this.requestTarget(request.targetApp || action.targetApp, request.targetEnvironment);
+    const target = this.requestTarget(
+      request.targetApp || action.targetApp,
+      request.targetEnvironment,
+    );
     const contract = this.contracts.contract(target.app, target.environment);
     const inputs = normalizeActionInputs(action, request.inputs);
     const role = this.identity.primaryRole(principal);
@@ -579,6 +590,65 @@ export class ActionRunnerService {
     }
   }
 
+  async repairDiagnosis(
+    request: ActionRunRequest,
+    principal: OpsPrincipal,
+  ): Promise<DiagnosisRepairResponse> {
+    const diagnosisAction = actionById('diagnose-target');
+    if (!diagnosisAction) {
+      throw new NotFoundException('unknown action: diagnose-target');
+    }
+    if (!roleAllows(principal.roles, diagnosisAction.role)) {
+      this.identity.requireRole(principal, diagnosisAction.role);
+    }
+
+    const target = this.requestTarget(
+      request.targetApp || diagnosisAction.targetApp,
+      request.targetEnvironment,
+    );
+    const beforeRun = await this.run('diagnose-target', request, principal);
+    const repairPlan = autoRepairPlan(beforeRun.diagnosis?.findings ?? []);
+    const repairRuns: ActionRunResult[] = [];
+
+    for (const step of repairPlan) {
+      const repairRun = await this.runAutoRepair(step, target, principal);
+      repairRuns.push(repairRun);
+      if (step.actionId === 'argo-sync' && repairRun.status === 'succeeded') {
+        await this.waitForArgoToSettle(target);
+      }
+    }
+
+    if (!repairRuns.length) {
+      return {
+        beforeRun,
+        repairRuns,
+        afterRun: beforeRun,
+        resolvedFindingIds: [],
+        remainingFindingIds: actionableFindingIds(beforeRun),
+        summary:
+          'Für diese Diagnose ist keine automatische Reparatur freigegeben.',
+      };
+    }
+
+    const afterRun = await this.run('diagnose-target', request, principal);
+    const afterIds = new Set(actionableFindingIds(afterRun));
+    const beforeIds = actionableFindingIds(beforeRun);
+    const resolvedFindingIds = beforeIds.filter((id) => !afterIds.has(id));
+    const remainingFindingIds = beforeIds.filter((id) => afterIds.has(id));
+
+    return {
+      beforeRun,
+      repairRuns,
+      afterRun,
+      resolvedFindingIds,
+      remainingFindingIds,
+      summary: repairSummary(
+        resolvedFindingIds.length,
+        remainingFindingIds.length,
+      ),
+    };
+  }
+
   async streamDiagnosis(
     request: ActionRunRequest,
     principal: OpsPrincipal,
@@ -592,7 +662,10 @@ export class ActionRunnerService {
       this.identity.requireRole(principal, action.role);
     }
 
-    const target = this.requestTarget(request.targetApp || action.targetApp, request.targetEnvironment);
+    const target = this.requestTarget(
+      request.targetApp || action.targetApp,
+      request.targetEnvironment,
+    );
     const contract = this.contracts.contract(target.app, target.environment);
     const inputs = normalizeActionInputs(action, request.inputs);
     const role = this.identity.primaryRole(principal);
@@ -630,8 +703,8 @@ export class ActionRunnerService {
     });
 
     try {
-      const diagnosisProgress = staggerDiagnosisProgress((step) =>
-        emit({ type: 'step', runId, step }),
+      const diagnosisProgress = staggerDiagnosisProgress(
+        (step) => emit({ type: 'step', runId, step }),
         configuredDiagnosisStepCount(contract),
       );
       const output = await this.diagnoseTarget(
@@ -698,6 +771,139 @@ export class ActionRunnerService {
       throw new NotFoundException(`unknown run: ${runId}`);
     }
     return run;
+  }
+
+  private async runAutoRepair(
+    step: AutoRepairStep,
+    target: TargetConfig,
+    principal: OpsPrincipal,
+  ): Promise<ActionRunResult> {
+    if (!AUTO_REPAIR_ACTION_IDS.has(step.actionId)) {
+      throw new BadRequestException(
+        `auto repair is not allowed for ${step.actionId}`,
+      );
+    }
+    const action = actionById(step.actionId);
+    if (!action) {
+      throw new NotFoundException(`unknown action: ${step.actionId}`);
+    }
+
+    const contract = this.contracts.contract(target.app, target.environment);
+    const inputs = normalizeActionInputs(action, step.inputs);
+    const role = this.identity.primaryRole(principal);
+    const runId = randomUUID();
+    const startedAt = new Date();
+    const started = this.store.save({
+      runId,
+      actionId: step.actionId,
+      status: 'running',
+      startedAt: startedAt.toISOString(),
+      targetApp: target.app,
+      targetEnvironment: target.environment,
+      actor: principal.user,
+      role,
+      summary: `Automatische Reparatur läuft: ${step.title}.`,
+      evidence: [],
+    });
+
+    this.logRun(started, 'started', 0);
+    await this.audit.record({
+      actor: principal.user,
+      role,
+      action: step.actionId,
+      targetApp: target.app,
+      targetEnvironment: target.environment,
+      result: 'started',
+      runId,
+      metadata: { diagnosisAutoRepair: true, remedyId: step.remedyId },
+    });
+
+    try {
+      const output = await this.execute(
+        step.actionId,
+        target,
+        contract,
+        inputs,
+        principal,
+      );
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      const run = this.store.save({
+        ...started,
+        status: 'succeeded',
+        finishedAt: finishedAt.toISOString(),
+        summary: output.summary,
+        evidence: output.evidence,
+        diagnosis: output.diagnosis,
+      });
+      this.metrics.record(step.actionId, role, 'succeeded', durationMs);
+      this.logRun(run, 'succeeded', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: step.actionId,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'success',
+        runId,
+        metadata: {
+          diagnosisAutoRepair: true,
+          remedyId: step.remedyId,
+          durationMs,
+        },
+      });
+      return run;
+    } catch (error) {
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      const run = this.store.save({
+        ...started,
+        status: 'failed',
+        finishedAt: finishedAt.toISOString(),
+        summary: 'Automatische Reparatur fehlgeschlagen.',
+        evidence: [],
+        message: message(error),
+      });
+      this.metrics.record(step.actionId, role, 'failed', durationMs);
+      this.logRun(run, 'failed', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: step.actionId,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'failure',
+        runId,
+        metadata: {
+          diagnosisAutoRepair: true,
+          remedyId: step.remedyId,
+          durationMs,
+          error: message(error),
+        },
+      });
+      return run;
+    }
+  }
+
+  private async waitForArgoToSettle(target: TargetConfig): Promise<void> {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      try {
+        const application = await this.argo.application(target);
+        const syncStatus = application.status?.sync?.status;
+        const phase = application.status?.operationState?.phase;
+        if (
+          syncStatus === 'Synced' &&
+          phase !== 'Running' &&
+          phase !== 'Pending'
+        ) {
+          return;
+        }
+      } catch {
+        // The follow-up diagnosis is the source of truth; waiting is best effort.
+      }
+      await sleep(2_000);
+    }
   }
 
   async varlensUsers(
@@ -821,7 +1027,10 @@ export class ActionRunnerService {
         `Diese Operations-Instanz verwaltet nur ${this.config.targetEnvironment}.`,
       );
     }
-    return this.config.target(this.config.targetApp, this.config.targetEnvironment);
+    return this.config.target(
+      this.config.targetApp,
+      this.config.targetEnvironment,
+    );
   }
 
   private async varlensUserCreate(
@@ -858,10 +1067,14 @@ export class ActionRunnerService {
       { [plan.secretRef]: appUrl },
       varlensUserSecretLabels(target, username),
     );
-    await this.kubernetes.patchSecret(target.namespace, WORKSPACE_DB_URLS_SECRET, {
-      metadata: { labels: varlensUserSecretLabels(target, username) },
-      stringData: { [plan.secretRef]: appUrl },
-    });
+    await this.kubernetes.patchSecret(
+      target.namespace,
+      WORKSPACE_DB_URLS_SECRET,
+      {
+        metadata: { labels: varlensUserSecretLabels(target, username) },
+        stringData: { [plan.secretRef]: appUrl },
+      },
+    );
     await this.kubernetes.applySecret(
       target.namespace,
       credentialSecret,
@@ -1008,9 +1221,13 @@ export class ActionRunnerService {
     }
 
     await this.kubernetes.deleteSecret(target.namespace, plan.secretName);
-    await this.kubernetes.patchSecret(target.namespace, WORKSPACE_DB_URLS_SECRET, {
-      data: { [plan.secretRef]: null },
-    });
+    await this.kubernetes.patchSecret(
+      target.namespace,
+      WORKSPACE_DB_URLS_SECRET,
+      {
+        data: { [plan.secretRef]: null },
+      },
+    );
 
     return {
       summary: `VarLens-Nutzer ${username} und dessen Workspace-Datenbank wurden entfernt.`,
@@ -1044,7 +1261,9 @@ export class ActionRunnerService {
       ['varlens', target.serviceName].includes(container.name || ''),
     )?.image;
     if (!image) {
-      throw new Error('VarLens-Image konnte nicht aus dem Deployment gelesen werden.');
+      throw new Error(
+        'VarLens-Image konnte nicht aus dem Deployment gelesen werden.',
+      );
     }
 
     await this.kubernetes.createJob(target.namespace, {
@@ -1052,7 +1271,11 @@ export class ActionRunnerService {
       kind: 'Job',
       metadata: {
         name: options.jobName,
-        labels: varlensUserJobLabels(target, options.username, options.operation),
+        labels: varlensUserJobLabels(
+          target,
+          options.username,
+          options.operation,
+        ),
         annotations: {
           'ops.robspan.net/created-by': options.actor,
           'ops.robspan.net/created-at': new Date().toISOString(),
@@ -1063,11 +1286,16 @@ export class ActionRunnerService {
         ttlSecondsAfterFinished: 600,
         template: {
           metadata: {
-            labels: varlensUserJobLabels(target, options.username, options.operation),
+            labels: varlensUserJobLabels(
+              target,
+              options.username,
+              options.operation,
+            ),
           },
           spec: {
             restartPolicy: 'Never',
-            serviceAccountName: podSpec?.serviceAccountName || target.serviceName,
+            serviceAccountName:
+              podSpec?.serviceAccountName || target.serviceName,
             imagePullSecrets: podSpec?.imagePullSecrets || [],
             containers: [
               {
@@ -1075,10 +1303,7 @@ export class ActionRunnerService {
                 image,
                 command: ['/usr/bin/tini', '--', '/usr/bin/bash', '-lc'],
                 args: [options.script],
-                env: [
-                  ...varlensRuntimeEnv(options.secretName),
-                  ...options.env,
-                ],
+                env: [...varlensRuntimeEnv(options.secretName), ...options.env],
                 volumeMounts: options.secretName
                   ? [
                       {
@@ -1631,16 +1856,23 @@ export class ActionRunnerService {
       summary: `Datenbank-Cluster ${clusterName}: ${status.phase || 'unbekannt'}; ${status.readyInstances ?? 0}/${cluster.value.spec?.instances ?? status.instances ?? 0} Instanzen bereit.`,
       evidence: [
         { label: 'Namespace', value: target.namespace },
-        { label: 'Cluster', value: cluster.value.metadata?.name || clusterName },
+        {
+          label: 'Cluster',
+          value: cluster.value.metadata?.name || clusterName,
+        },
         { label: 'Phase', value: status.phase || null },
-        { label: 'Instanzen', value: cluster.value.spec?.instances ?? status.instances ?? null },
+        {
+          label: 'Instanzen',
+          value: cluster.value.spec?.instances ?? status.instances ?? null,
+        },
         { label: 'Bereite Instanzen', value: status.readyInstances ?? null },
         { label: 'Aktueller Primary', value: status.currentPrimary || null },
         { label: 'Ziel-Primary', value: status.targetPrimary || null },
         { label: 'Conditions', value: conditions || null },
         {
           label: 'Datenschutzgrenze',
-          value: 'Nur Cluster-Metadaten; keine Tabellen, Dumps, Zugangsdaten oder Nutzdaten.',
+          value:
+            'Nur Cluster-Metadaten; keine Tabellen, Dumps, Zugangsdaten oder Nutzdaten.',
         },
       ],
     };
@@ -1679,11 +1911,17 @@ export class ActionRunnerService {
     return {
       summary: `${ingressItems.length} Ingress(e), ${certificateItems.length} Zertifikat(e) in ${target.namespace}.`,
       evidence: [
-        { label: 'Öffentliche Health-URL', value: contract.endpoints.publicHealthUrl || null },
+        {
+          label: 'Öffentliche Health-URL',
+          value: contract.endpoints.publicHealthUrl || null,
+        },
         { label: 'Ingress-Fehler', value: ingresses.error || null },
         { label: 'Zertifikat-Fehler', value: certificates.error || null },
         { label: 'Hosts', value: hosts.length ? hosts.join(', ') : null },
-        { label: 'TLS-Referenzen', value: tlsRefs.length ? tlsRefs.join(', ') : null },
+        {
+          label: 'TLS-Referenzen',
+          value: tlsRefs.length ? tlsRefs.join(', ') : null,
+        },
         ...ingressItems.map((ingress) => ({
           label: `Ingress ${ingress.metadata?.name || 'unbekannt'}`,
           value: ingress.spec?.ingressClassName || 'ohne explizite Klasse',
@@ -1714,7 +1952,10 @@ export class ActionRunnerService {
       evidence: [
         { label: 'Namespace', value: target.namespace },
         { label: 'Backup-Fehler', value: backups.error || null },
-        { label: 'ScheduledBackup-Fehler', value: scheduledBackups.error || null },
+        {
+          label: 'ScheduledBackup-Fehler',
+          value: scheduledBackups.error || null,
+        },
         { label: 'Backups', value: backupItems.length },
         { label: 'ScheduledBackups', value: scheduledItems.length },
         {
@@ -1729,20 +1970,25 @@ export class ActionRunnerService {
         })),
         {
           label: 'Datenschutzgrenze',
-          value: 'Nur Backup-Objektstatus; keine Backup-Inhalte, Dumps oder Wiederherstellung.',
+          value:
+            'Nur Backup-Objektstatus; keine Backup-Inhalte, Dumps oder Wiederherstellung.',
         },
       ].filter((item) => item.value !== null),
     };
   }
 
   private observabilityStatus(contract: AppOperationsContract) {
-    const metrics = contract.observability.prometheusMetrics.map((metric) => metric.name);
+    const metrics = contract.observability.prometheusMetrics.map(
+      (metric) => metric.name,
+    );
     return {
       summary: `${metrics.length} Prometheus-Metriken, ${contract.observability.grafanaDashboards.length} Dashboard(s), Loki ${contract.observability.lokiBaseUrl ? 'konfiguriert' : 'nicht konfiguriert'}.`,
       evidence: [
         {
           label: 'Prometheus',
-          value: contract.observability.prometheusBaseUrl ? 'konfiguriert' : 'nicht konfiguriert',
+          value: contract.observability.prometheusBaseUrl
+            ? 'konfiguriert'
+            : 'nicht konfiguriert',
         },
         {
           label: 'Prometheus-Metriken',
@@ -1750,7 +1996,9 @@ export class ActionRunnerService {
         },
         {
           label: 'Loki',
-          value: contract.observability.lokiBaseUrl ? 'konfiguriert' : 'nicht konfiguriert',
+          value: contract.observability.lokiBaseUrl
+            ? 'konfiguriert'
+            : 'nicht konfiguriert',
         },
         {
           label: 'Log-Pflichtfelder',
@@ -1758,9 +2006,10 @@ export class ActionRunnerService {
         },
         {
           label: 'Dashboards',
-          value: contract.observability.grafanaDashboards
-            .map((dashboard) => dashboard.label)
-            .join(', ') || null,
+          value:
+            contract.observability.grafanaDashboards
+              .map((dashboard) => dashboard.label)
+              .join(', ') || null,
         },
         {
           label: 'Eskalationsfelder',
@@ -1840,6 +2089,65 @@ export class ActionRunnerService {
       }),
     );
   }
+}
+
+function autoRepairPlan(
+  findings: readonly DiagnosisFinding[],
+): readonly AutoRepairStep[] {
+  const candidates = new Map<AutoRepairStep['actionId'], AutoRepairStep>();
+  for (const finding of findings) {
+    if (finding.findingId === 'no-obvious-fault') {
+      continue;
+    }
+    for (const remedy of finding.remedies) {
+      if (!isAutoRepairRemedy(remedy)) {
+        continue;
+      }
+      if (!candidates.has(remedy.actionId)) {
+        candidates.set(remedy.actionId, {
+          actionId: remedy.actionId,
+          remedyId: remedy.remedyId,
+          title: remedy.title,
+          inputs: { ...(remedy.defaultInputs ?? {}) },
+        });
+      }
+    }
+  }
+
+  const argoSync = candidates.get('argo-sync');
+  if (argoSync) {
+    return [argoSync];
+  }
+  const rolloutRestart = candidates.get('rollout-restart');
+  return rolloutRestart ? [rolloutRestart] : [];
+}
+
+function isAutoRepairRemedy(
+  remedy: SuggestedRemedy,
+): remedy is SuggestedRemedy & {
+  readonly actionId: AutoRepairStep['actionId'];
+} {
+  return (
+    AUTO_REPAIR_ACTION_IDS.has(remedy.actionId) &&
+    remedy.risk === 'low' &&
+    (remedy.actionId === 'argo-sync' || remedy.actionId === 'rollout-restart')
+  );
+}
+
+function actionableFindingIds(run: ActionRunResult): readonly string[] {
+  return (run.diagnosis?.findings ?? [])
+    .map((finding) => finding.findingId)
+    .filter((findingId) => findingId !== 'no-obvious-fault');
+}
+
+function repairSummary(resolvedCount: number, remainingCount: number): string {
+  if (remainingCount === 0 && resolvedCount > 0) {
+    return `Automatische Reparatur abgeschlossen: ${resolvedCount} Befund(e) behoben.`;
+  }
+  if (resolvedCount > 0) {
+    return `Automatische Reparatur teilweise erfolgreich: ${resolvedCount} Befund(e) behoben, ${remainingCount} weiterhin sichtbar.`;
+  }
+  return 'Automatische Reparatur ausgeführt, aber die Störung ist weiterhin sichtbar.';
 }
 
 function validateEnvironment(value: string): TargetEnvironment {
@@ -2106,7 +2414,8 @@ function safeK8sSuffix(value: string): string {
 }
 
 function stableK8sSuffix(value: string): string {
-  const base = safeK8sSuffix(value).slice(0, 31).replace(/^-|-$/g, '') || 'user';
+  const base =
+    safeK8sSuffix(value).slice(0, 31).replace(/^-|-$/g, '') || 'user';
   return `${base}-${sha256(value).slice(0, 8)}`;
 }
 
@@ -2150,8 +2459,14 @@ function postgresUrl(role: string, password: string, dbName: string): string {
 
 type VarLensUserLifecycleOperation = 'create' | 'block' | 'unblock' | 'prune';
 
-function lifecycleJobName(operation: VarLensUserLifecycleOperation, username: string): string {
-  return `varlens-ops-user-${operation}-${stableK8sSuffix(username)}`.slice(0, 63);
+function lifecycleJobName(
+  operation: VarLensUserLifecycleOperation,
+  username: string,
+): string {
+  return `varlens-ops-user-${operation}-${stableK8sSuffix(username)}`.slice(
+    0,
+    63,
+  );
 }
 
 function varlensUserJobLabels(
@@ -2182,7 +2497,9 @@ function varlensUserSecretLabels(
   };
 }
 
-function varlensRuntimeEnv(secretName?: string): readonly Record<string, unknown>[] {
+function varlensRuntimeEnv(
+  secretName?: string,
+): readonly Record<string, unknown>[] {
   const env: Record<string, unknown>[] = [
     { name: 'NODE_ENV', value: 'production' },
     { name: 'VARLENS_PG_SCHEMA', value: 'public' },

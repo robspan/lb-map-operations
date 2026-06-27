@@ -14,12 +14,11 @@ import {
   ActionRunResult,
   DiagnosisConfidence,
   DiagnosisFinding,
+  DiagnosisRepairResponse,
   DiagnosisSeverity,
   DiagnosisStepEvent,
   DiagnosisStepStatus,
   OpsRole,
-  RemedyRisk,
-  SuggestedRemedy,
   TargetApp,
   TargetEnvironment,
 } from '@lb-map-operations/ops-contract';
@@ -43,12 +42,6 @@ const CONFIDENCE_LABELS: Record<DiagnosisConfidence, string> = {
   high: 'hoch',
   medium: 'mittel',
   low: 'niedrig',
-};
-
-const RISK_LABELS: Record<RemedyRisk, string> = {
-  none: 'keins',
-  low: 'gering',
-  medium: 'mittel',
 };
 
 const STEP_STATUS_LABELS: Record<DiagnosisStepStatus, string> = {
@@ -80,16 +73,15 @@ export class DiagnosePanel implements OnDestroy {
   selectedRun?: ActionRunResult;
   private readonly expandedFindings = new Set<string>();
 
-  remedyRuns: Record<string, ActionRunResult> = {};
-  runningRemedyId = '';
-  confirmingRemedyId = '';
-  private readonly expandedRemedies = new Set<string>();
+  repairing = false;
+  repairResult?: DiagnosisRepairResponse;
+  repairError = '';
 
   private streamSub?: Subscription;
 
   /** Staggered reveal: incoming probe events are buffered and applied one per tick
    *  so the scan reads as real work instead of flipping green all at once. */
-  private static readonly STEP_STAGGER_MS = 30;
+  private static readonly STEP_STAGGER_MS = 50;
   private pendingSteps: DiagnosisStepEvent[] = [];
   private pendingResult?: ActionRunResult;
   private pendingError?: string;
@@ -98,7 +90,7 @@ export class DiagnosePanel implements OnDestroy {
 
   get findings(): readonly DiagnosisFinding[] {
     return [...(this.selectedRun?.diagnosis?.findings ?? [])].sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
+      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     );
   }
 
@@ -113,15 +105,21 @@ export class DiagnosePanel implements OnDestroy {
     this.pendingError = undefined;
     this.streamDone = false;
     this.clearDrain();
+    this.repairResult = undefined;
+    this.repairError = '';
     this.running = true;
     this.streamSub?.unsubscribe();
     this.streamSub = this.api
-      .streamDiagnose({ targetApp: this.app, targetEnvironment: this.environment, inputs: {} })
+      .streamDiagnose({
+        targetApp: this.app,
+        targetEnvironment: this.environment,
+        inputs: {},
+      })
       .pipe(
         finalize(() => {
           this.streamDone = true;
           this.scheduleDrain();
-        })
+        }),
       )
       .subscribe({
         next: (event) => {
@@ -152,7 +150,10 @@ export class DiagnosePanel implements OnDestroy {
 
   private scheduleDrain(): void {
     if (!this.drainTimer) {
-      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+      this.drainTimer = setTimeout(
+        () => this.drainTick(),
+        DiagnosePanel.STEP_STAGGER_MS,
+      );
     }
   }
 
@@ -164,13 +165,19 @@ export class DiagnosePanel implements OnDestroy {
     if (step) {
       this.upsertStep(step);
       this.detect();
-      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+      this.drainTimer = setTimeout(
+        () => this.drainTick(),
+        DiagnosePanel.STEP_STAGGER_MS,
+      );
       return;
     }
 
     if (!this.streamDone) {
       // Waiting for more probes to arrive from the stream.
-      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+      this.drainTimer = setTimeout(
+        () => this.drainTick(),
+        DiagnosePanel.STEP_STAGGER_MS,
+      );
       return;
     }
 
@@ -181,7 +188,6 @@ export class DiagnosePanel implements OnDestroy {
     if (this.pendingResult) {
       this.runs = [this.pendingResult, ...this.runs].slice(0, 15);
       this.selectedRun = this.pendingResult;
-      this.remedyRuns = {};
       this.pendingResult = undefined;
     }
     this.running = false;
@@ -204,9 +210,9 @@ export class DiagnosePanel implements OnDestroy {
 
   select(run: ActionRunResult): void {
     this.selectedRun = run;
-    this.remedyRuns = {};
+    this.repairResult = undefined;
+    this.repairError = '';
     this.expandedFindings.clear();
-    this.expandedRemedies.clear();
   }
 
   toggleSteps(): void {
@@ -225,39 +231,55 @@ export class DiagnosePanel implements OnDestroy {
     return this.expandedFindings.has(findingId);
   }
 
-  remedyExpanded(remedyId: string): boolean {
-    return this.expandedRemedies.has(remedyId);
+  repairAvailable(): boolean {
+    if (!this.selectedRun?.diagnosis || this.repairing || this.running) {
+      return false;
+    }
+    return this.findings.some((finding) =>
+      finding.remedies.some((remedy) =>
+        ['argo-sync', 'rollout-restart'].includes(remedy.actionId),
+      ),
+    );
   }
 
-  toggleRemedy(remedyId: string): void {
-    if (!this.isAdmin()) {
+  repair(): void {
+    if (!this.repairAvailable()) {
       return;
     }
-    if (this.expandedRemedies.has(remedyId)) {
-      this.expandedRemedies.delete(remedyId);
-    } else {
-      this.expandedRemedies.add(remedyId);
-    }
-  }
-
-  /** Read-only remedies run immediately; changing ones require an explicit confirm. */
-  requestRemedy(remedy: SuggestedRemedy): void {
-    if (!remedy.enabled || this.runningRemedyId) {
-      return;
-    }
-    if (remedy.risk !== 'none' && this.confirmingRemedyId !== remedy.remedyId) {
-      this.confirmingRemedyId = remedy.remedyId;
-      return;
-    }
-    this.runRemedy(remedy);
-  }
-
-  confirmRemedy(remedy: SuggestedRemedy): void {
-    this.runRemedy(remedy);
-  }
-
-  cancelRemedy(): void {
-    this.confirmingRemedyId = '';
+    this.repairing = true;
+    this.repairError = '';
+    this.repairResult = undefined;
+    this.api
+      .repairDiagnosis({
+        targetApp: this.app,
+        targetEnvironment: this.environment,
+        inputs: {},
+      })
+      .pipe(
+        finalize(() => {
+          this.repairing = false;
+          this.changeDetector.detectChanges();
+        }),
+      )
+      .subscribe({
+        next: (result) => {
+          this.repairResult = result;
+          this.selectedRun = result.afterRun;
+          this.runs = [result.afterRun, result.beforeRun, ...this.runs]
+            .filter(
+              (run, index, all) =>
+                all.findIndex((item) => item.runId === run.runId) === index,
+            )
+            .slice(0, 15);
+          this.expandedFindings.clear();
+          this.changeDetector.detectChanges();
+        },
+        error: () => {
+          this.repairError =
+            'Automatische Reparatur konnte nicht ausgeführt werden.';
+          this.changeDetector.detectChanges();
+        },
+      });
   }
 
   severityLabel(value: DiagnosisSeverity): string {
@@ -266,10 +288,6 @@ export class DiagnosePanel implements OnDestroy {
 
   confidenceLabel(value: DiagnosisConfidence): string {
     return CONFIDENCE_LABELS[value] || value;
-  }
-
-  riskLabel(value: RemedyRisk): string {
-    return RISK_LABELS[value] || value;
   }
 
   stepStatusLabel(value: DiagnosisStepStatus): string {
@@ -283,82 +301,60 @@ export class DiagnosePanel implements OnDestroy {
     return status;
   }
 
-  isAdmin(): boolean {
-    return this.roles.includes('admin');
+  repairSummary(): string {
+    if (this.repairResult) {
+      return this.repairResult.summary;
+    }
+    if (this.repairError) {
+      return this.repairError;
+    }
+    return 'Führt die freigegebene Reparatur aus und prüft danach automatisch erneut.';
   }
 
-  visibleRemedies(finding: DiagnosisFinding): readonly SuggestedRemedy[] {
-    if (this.isAdmin()) {
-      return finding.remedies;
+  repairResultClass(): string {
+    if (!this.repairResult) {
+      return this.repairError ? 'failed' : 'idle';
     }
-    return finding.remedies.filter(
-      (remedy) =>
-        remedy.enabled &&
-        (remedy.actionId === 'escalation-bundle' || remedy.risk !== 'none')
-    );
+    if (this.repairResult.remainingFindingIds.length === 0) {
+      return 'succeeded';
+    }
+    return this.repairResult.resolvedFindingIds.length ? 'partial' : 'failed';
   }
 
-  remediesHeading(): string {
-    return this.isAdmin() ? 'Vorgeschlagene Abhilfe' : 'Nächster Schritt';
-  }
-
-  remedyTitle(remedy: SuggestedRemedy): string {
-    if (this.isAdmin()) {
-      return remedy.title;
+  repairRunLabels(): string {
+    const runs = this.repairResult?.repairRuns ?? [];
+    if (!runs.length) {
+      return '';
     }
-    if (remedy.actionId === 'escalation-bundle') {
-      return 'Eskalieren';
-    }
-    return 'Autofix';
-  }
-
-  remedyDescription(remedy: SuggestedRemedy): string {
-    if (this.isAdmin()) {
-      return remedy.description;
-    }
-    if (remedy.actionId === 'escalation-bundle') {
-      return 'An interne IT übergeben, wenn die Diagnose keine direkte Lösung bringt.';
-    }
-    return 'Sichere automatische Abhilfe ausführen und danach erneut scannen.';
-  }
-
-  remedyButtonLabel(remedy: SuggestedRemedy): string {
-    if (!this.isAdmin()) {
-      return remedy.actionId === 'escalation-bundle' ? 'Eskalieren' : 'Autofix';
-    }
-    return remedy.risk === 'none' ? 'Anzeigen' : 'Ausführen';
-  }
-
-  compactRemedySummary(remedy: SuggestedRemedy, run: ActionRunResult): string {
-    if (this.isAdmin()) {
-      return run.summary;
-    }
-    if (run.status === 'failed') {
-      return 'Hat nicht funktioniert. Bitte eskalieren.';
-    }
-    if (remedy.actionId === 'escalation-bundle') {
-      return 'Eskalation vorbereitet.';
-    }
-    return 'Abhilfe ausgeführt. Danach Diagnose erneut starten.';
+    return runs
+      .map(
+        (run) =>
+          `${repairActionLabel(run.actionId)}: ${this.runStatusLabel(run.status)}`,
+      )
+      .join(' · ');
   }
 
   worstSeverity(run: ActionRunResult): DiagnosisSeverity {
     const findings = run.diagnosis?.findings ?? [];
     return findings.reduce<DiagnosisSeverity>(
       (worst, finding) =>
-        SEVERITY_ORDER[finding.severity] < SEVERITY_ORDER[worst] ? finding.severity : worst,
-      'info'
+        SEVERITY_ORDER[finding.severity] < SEVERITY_ORDER[worst]
+          ? finding.severity
+          : worst,
+      'info',
     );
   }
 
   isLog(item: ActionEvidence): boolean {
     return (
-      typeof item.value === 'string' && (item.value.includes('\n') || item.value.length > 160)
+      typeof item.value === 'string' &&
+      (item.value.includes('\n') || item.value.length > 160)
     );
   }
 
   evidenceUrl(item: ActionEvidence): string | null {
-    return typeof item.value === 'string' && /^https?:\/\/\S+$/.test(item.value.trim())
+    return typeof item.value === 'string' &&
+      /^https?:\/\/\S+$/.test(item.value.trim())
       ? item.value.trim()
       : null;
   }
@@ -368,41 +364,13 @@ export class DiagnosePanel implements OnDestroy {
     this.clearDrain();
   }
 
-  private runRemedy(remedy: SuggestedRemedy): void {
-    this.confirmingRemedyId = '';
-    this.runningRemedyId = remedy.remedyId;
-    this.api
-      .run(remedy.actionId, {
-        targetApp: this.app,
-        targetEnvironment: this.environment,
-        inputs: remedy.defaultInputs ?? {},
-      })
-      .pipe(
-        finalize(() => {
-          this.runningRemedyId = '';
-          this.changeDetector.detectChanges();
-        })
-      )
-      .subscribe({
-        next: ({ run }) => {
-          this.remedyRuns[remedy.remedyId] = run;
-          if (this.isAdmin()) {
-            this.expandedRemedies.add(remedy.remedyId);
-          }
-          this.changeDetector.detectChanges();
-        },
-        error: () => {
-          this.error = `Abhilfe „${remedy.title}" konnte nicht ausgeführt werden.`;
-          this.changeDetector.detectChanges();
-        },
-      });
-  }
-
   private upsertStep(step: DiagnosisStepEvent): void {
     if (step.status === 'skipped') {
       return;
     }
-    const index = this.steps.findIndex((existing) => existing.stepId === step.stepId);
+    const index = this.steps.findIndex(
+      (existing) => existing.stepId === step.stepId,
+    );
     if (index === -1) {
       this.steps = [...this.steps, step];
     } else {
@@ -411,4 +379,14 @@ export class DiagnosePanel implements OnDestroy {
       this.steps = next;
     }
   }
+}
+
+function repairActionLabel(actionId: string): string {
+  if (actionId === 'argo-sync') {
+    return 'GitOps-Abgleich';
+  }
+  if (actionId === 'rollout-restart') {
+    return 'App-Neustart';
+  }
+  return 'Reparatur';
 }

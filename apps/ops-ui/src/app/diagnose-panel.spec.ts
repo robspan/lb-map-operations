@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { DiagnosePanel } from './diagnose-panel';
 
-function runWithFinding() {
+function runWithFinding(role: 'admin' | 'first-level' = 'admin') {
   return {
     runId: 'd1',
     actionId: 'diagnose-target',
@@ -14,7 +17,7 @@ function runWithFinding() {
     targetApp: 'varlens',
     targetEnvironment: 'test',
     actor: 'admin',
-    role: 'admin',
+    role,
     summary: 'Diagnose abgeschlossen.',
     evidence: [],
     diagnosis: {
@@ -31,10 +34,22 @@ function runWithFinding() {
           evidence: [{ label: 'ArgoCD Sync', value: 'OutOfSync' }],
           remedies: [
             {
-              remedyId: 'read-pod-summary',
-              title: 'Pod-Übersicht anzeigen',
-              description: 'Pods und Events lesen.',
-              actionId: 'pod-summary',
+              remedyId: 'argo-sync-no-prune',
+              title: 'ArgoCD Sync ausführen',
+              description:
+                'Wendet den GitOps-Sollzustand erneut ohne Prune an.',
+              actionId: 'argo-sync',
+              requiredRole: 'admin',
+              risk: 'low',
+              enabled: role === 'admin',
+              disabledReason:
+                role === 'admin' ? undefined : 'Benötigt Rolle admin.',
+            },
+            {
+              remedyId: 'read-argo-status',
+              title: 'ArgoCD Details anzeigen',
+              description: 'Zeigt Sync und Health.',
+              actionId: 'argo-status',
               requiredRole: 'first-level',
               risk: 'none',
               enabled: true,
@@ -46,11 +61,38 @@ function runWithFinding() {
   };
 }
 
+function runWithoutFindings() {
+  return {
+    ...runWithFinding(),
+    runId: 'd2',
+    diagnosis: {
+      targetApp: 'varlens',
+      targetEnvironment: 'test',
+      generatedAt: new Date().toISOString(),
+      findings: [
+        {
+          findingId: 'no-obvious-fault',
+          severity: 'info',
+          confidence: 'medium',
+          summary: 'Keine eindeutige Standardstörung erkannt.',
+          likelyCause: 'Die geprüften Standardsignale sind unauffällig.',
+          evidence: [],
+          remedies: [],
+        },
+      ],
+    },
+  };
+}
+
 describe('DiagnosePanel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DiagnosePanel],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
     }).compileComponents();
   });
 
@@ -61,7 +103,9 @@ describe('DiagnosePanel', () => {
     fixture.componentRef.setInput('roles', roles);
     if (selectedRun) {
       // Set before first change detection so the rendered state is stable.
-      (fixture.componentInstance as unknown as { selectedRun: unknown }).selectedRun = selectedRun;
+      (
+        fixture.componentInstance as unknown as { selectedRun: unknown }
+      ).selectedRun = selectedRun;
     }
     fixture.detectChanges();
     return fixture;
@@ -70,24 +114,37 @@ describe('DiagnosePanel', () => {
   it('shows the diagnosis button and an empty state initially', () => {
     const fixture = create();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('[data-testid="diagnose-start"]')).toBeTruthy();
+    expect(
+      compiled.querySelector('[data-testid="diagnose-start"]'),
+    ).toBeTruthy();
     expect(compiled.textContent).toContain('Noch keine Diagnose');
   });
 
-  it('renders findings, severity, cause and remedies; expands evidence on demand', () => {
+  it('renders findings, severity and cause without per-finding remedy actions', () => {
     const fixture = create(runWithFinding());
     const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.querySelectorAll('[data-testid="finding"]')).toHaveLength(1);
+    expect(compiled.querySelectorAll('[data-testid="finding"]')).toHaveLength(
+      1,
+    );
     expect(compiled.textContent).toContain('ArgoCD meldet OutOfSync.');
     expect(compiled.textContent).toContain('Mögliche Ursache:');
-    expect(compiled.textContent).toContain('Pod-Übersicht anzeigen');
+    expect(compiled.textContent).toContain('Automatische Reparatur');
+    expect(compiled.textContent).not.toContain('Vorgeschlagene Abhilfe');
+    expect(compiled.querySelector('[data-testid="remedy-run"]')).toBeNull();
+    expect(compiled.querySelector('[data-testid="repair-all"]')).toBeTruthy();
 
     // Evidence is hidden until expanded.
     expect(compiled.querySelector('.evidence')).toBeNull();
-    (compiled.querySelector('[data-testid="finding-details"]') as HTMLButtonElement).click();
+    (
+      compiled.querySelector(
+        '[data-testid="finding-details"]',
+      ) as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
-    expect(compiled.querySelector('.evidence')?.textContent).toContain('OutOfSync');
+    expect(compiled.querySelector('.evidence')?.textContent).toContain(
+      'OutOfSync',
+    );
   });
 
   it('does not show unconfigured diagnosis checks', () => {
@@ -125,92 +182,116 @@ describe('DiagnosePanel', () => {
     expect(compiled.textContent).toContain('Betriebssignale prüfen');
   });
 
-  it('applies a read-only remedy and shows its result', async () => {
+  it('runs the diagnosis repair endpoint and switches to the after-scan result', async () => {
     const fixture = create(runWithFinding());
     const http = TestBed.inject(HttpTestingController);
     const compiled = fixture.nativeElement as HTMLElement;
 
-    (compiled.querySelector('[data-testid="remedy-run"]') as HTMLButtonElement).click();
+    (
+      compiled.querySelector('[data-testid="repair-all"]') as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
 
-    http.expectOne('/api/actions/pod-summary/runs').flush({
-      run: {
-        runId: 'r9',
-        actionId: 'pod-summary',
-        status: 'succeeded',
-        startedAt: new Date().toISOString(),
-        targetApp: 'varlens',
-        targetEnvironment: 'test',
-        actor: 'admin',
-        role: 'admin',
-        summary: '2 Pods gefunden.',
-        evidence: [{ label: 'Pod varlens-1', value: 'Running' }],
-      },
+    http.expectOne('/api/diagnosis/repair').flush({
+      beforeRun: runWithFinding(),
+      repairRuns: [
+        {
+          runId: 'r9',
+          actionId: 'argo-sync',
+          status: 'succeeded',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          targetApp: 'varlens',
+          targetEnvironment: 'test',
+          actor: 'admin',
+          role: 'admin',
+          summary: 'Sync angefordert.',
+          evidence: [],
+        },
+      ],
+      afterRun: runWithoutFindings(),
+      resolvedFindingIds: ['argocd-out-of-sync'],
+      remainingFindingIds: [],
+      summary: 'Automatische Reparatur abgeschlossen: 1 Befund(e) behoben.',
     });
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(compiled.querySelector('.remedy-result')?.textContent).toContain('2 Pods gefunden.');
+    expect(compiled.textContent).toContain('1 Befund(e) behoben');
+    expect(compiled.textContent).toContain(
+      'Keine eindeutige Standardstörung erkannt.',
+    );
+    expect(compiled.textContent).toContain('GitOps-Abgleich: Erfolg');
     http.verify();
   });
 
-  it('shows compact first-level remedy results without technical evidence', async () => {
-    const run = runWithFinding();
-    run.diagnosis.findings[0].remedies = [
-      {
-        remedyId: 'read-smoke-result',
-        title: 'Smoke-Status anzeigen',
-        description: 'Zeigt Smoke-Jobs.',
-        actionId: 'smoke-result',
-        requiredRole: 'first-level',
-        risk: 'none',
-        enabled: true,
-      },
-      {
-        remedyId: 'create-escalation-bundle',
-        title: 'Eskalationspaket erstellen',
-        description: 'Bündelt Details.',
-        actionId: 'escalation-bundle',
-        requiredRole: 'first-level',
-        risk: 'none',
-        enabled: true,
-      },
-    ];
-    const fixture = create(run, ['first-level']);
+  it('shows the same single repair control for first-level users', async () => {
+    const fixture = create(runWithFinding('first-level'), ['first-level']);
     const http = TestBed.inject(HttpTestingController);
     const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.textContent).not.toContain('Smoke-Status anzeigen');
+    expect(compiled.querySelector('[data-testid="repair-all"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="remedy-run"]')).toBeNull();
     expect(compiled.textContent).not.toContain('Risiko:');
-    expect(compiled.textContent).toContain('Eskalieren');
+    expect(compiled.textContent).not.toContain('Benötigt Rolle admin');
 
-    (compiled.querySelector('[data-testid="remedy-run"]') as HTMLButtonElement).click();
+    (
+      compiled.querySelector('[data-testid="repair-all"]') as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
 
-    http.expectOne('/api/actions/escalation-bundle/runs').flush({
-      run: {
-        runId: 'r10',
-        actionId: 'escalation-bundle',
-        status: 'succeeded',
-        startedAt: new Date().toISOString(),
-        targetApp: 'varlens',
-        targetEnvironment: 'test',
-        actor: 'support',
-        role: 'first-level',
-        summary: 'Eskalationspaket für varlens/test zusammengestellt.',
-        evidence: [
-          { label: 'ArgoCD Sync', value: 'Synced' },
-          { label: 'Prometheus-Signale', value: 4 },
-        ],
+    http.expectOne('/api/diagnosis/repair').flush({
+      beforeRun: runWithFinding('first-level'),
+      repairRuns: [
+        {
+          runId: 'r10',
+          actionId: 'argo-sync',
+          status: 'succeeded',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          targetApp: 'varlens',
+          targetEnvironment: 'test',
+          actor: 'support',
+          role: 'first-level',
+          summary: 'Sync angefordert.',
+          evidence: [],
+        },
+      ],
+      afterRun: {
+        ...runWithFinding('first-level'),
+        runId: 'd3',
+        diagnosis: {
+          ...runWithFinding('first-level').diagnosis,
+          findings: [
+            {
+              ...runWithFinding('first-level').diagnosis.findings[0],
+              findingId: 'liveness-failing',
+              summary: 'Liveness-Endpunkt antwortet nicht erfolgreich.',
+            },
+          ],
+        },
       },
+      resolvedFindingIds: ['argocd-out-of-sync'],
+      remainingFindingIds: ['liveness-failing'],
+      summary:
+        'Automatische Reparatur teilweise erfolgreich: 1 Befund(e) behoben, 1 weiterhin sichtbar.',
     });
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const resultText = compiled.querySelector('.remedy-result')?.textContent || '';
-    expect(resultText).toContain('Eskalation vorbereitet.');
-    expect(resultText).not.toContain('ArgoCD Sync');
-    expect(resultText).not.toContain('Prometheus-Signale');
+    expect(compiled.textContent).toContain('teilweise erfolgreich');
+    expect(compiled.textContent).toContain('weiterhin sichtbar');
+    expect(compiled.textContent).not.toContain('Vorgeschlagene Abhilfe');
     http.verify();
+  });
+
+  it('does not show a repair button when the diagnosis has no repairable issue', () => {
+    const fixture = create(runWithoutFindings());
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).toContain(
+      'Keine eindeutige Standardstörung erkannt.',
+    );
+    expect(compiled.querySelector('[data-testid="repair-all"]')).toBeNull();
   });
 });

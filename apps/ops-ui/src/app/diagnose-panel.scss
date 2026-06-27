@@ -16,7 +16,11 @@
   padding: 22px 24px;
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(420px 200px at 100% 0%, #eef1ff 0%, rgba(238, 241, 255, 0) 70%),
+    radial-gradient(
+      420px 200px at 100% 0%,
+      #eef1ff 0%,
+      rgba(238, 241, 255, 0) 70%
+    ),
     linear-gradient(180deg, #ffffff 0%, var(--surface-tint) 100%);
   box-shadow: var(--shadow-md);
 }
@@ -170,7 +174,9 @@
   }
   @keyframes ring-pulse {
     50% {
-      box-shadow: inset 0 0 0 2px var(--info-dot), 0 0 0 4px rgba(91, 141, 239, 0.18);
+      box-shadow:
+        inset 0 0 0 2px var(--info-dot),
+        0 0 0 4px rgba(91, 141, 239, 0.18);
     }
   }
   @keyframes icon-pop {
@@ -257,95 +263,47 @@
   color: var(--ink-soft);
 }
 
-/* remedies — white sub-tiles inside the pastel finding */
-.remedies {
-  margin-top: 16px;
-  padding: 14px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.66);
-}
-.remedies h5 {
-  margin: 0 0 10px;
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--ink-soft);
-}
-.remedy {
+.repair-panel {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 10px 0;
-}
-.remedy + .remedy,
-.remedy-result + .remedy {
-  border-top: 1px solid var(--hair);
-}
-.remedy-info {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.remedy-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 18px;
   flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
-.remedy-title strong {
-  font-size: 0.92rem;
+.repair-panel h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--ink);
 }
-.remedy-info p {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
+.repair-panel p {
+  margin: 5px 0 0;
   color: var(--ink-soft);
+  font-size: 0.9rem;
 }
-.disabled-reason {
-  font-style: italic;
+.repair-panel.repair-succeeded {
+  background: var(--ok-bg);
 }
-
-.risk {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--neutral-bg);
-  color: var(--neutral-fg);
-}
-.risk-low,
-.risk-medium {
+.repair-panel.repair-partial {
   background: var(--warn-bg);
-  color: var(--warn-fg);
 }
-
-.remedy-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.repair-panel.repair-failed {
+  background: var(--crit-bg);
+}
+.repair-button {
   flex: 0 0 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
 }
-.confirm-note {
-  font-size: 0.8rem;
-  color: var(--crit-fg);
-}
-
-.remedy-result {
-  padding: 8px 0 4px;
-}
-.remedy-result .expander {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  color: var(--ink);
-  font-weight: 500;
-}
-.caret {
-  margin-left: auto;
-  color: var(--muted);
+.repair-runs {
+  font-weight: 600;
 }
 
 /* evidence */
@@ -466,11 +424,12 @@
 }
 
 @media (max-width: 640px) {
-  .remedy {
+  .repair-panel {
     flex-direction: column;
+    align-items: flex-start;
   }
-  .remedy-actions {
-    justify-content: flex-start;
+  .repair-button {
+    width: 100%;
   }
   .evidence {
     grid-template-columns: 1fr;
