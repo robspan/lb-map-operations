@@ -20,6 +20,7 @@ describe('action registry', () => {
       'argo-sync',
       'varlens-user-create',
       'varlens-user-block',
+      'varlens-user-unblock',
       'varlens-user-prune',
       'rollout-restart',
     ]);
@@ -36,6 +37,7 @@ describe('action registry', () => {
     expect(firstLevelActions).not.toContain('data-store-status');
     expect(firstLevelActions).not.toContain('varlens-user-create');
     expect(firstLevelActions).not.toContain('varlens-user-block');
+    expect(firstLevelActions).not.toContain('varlens-user-unblock');
     expect(firstLevelActions).not.toContain('varlens-user-prune');
     expect(firstLevelActions).not.toContain('argo-sync');
     expect(firstLevelActions).not.toContain('rollout-restart');
@@ -85,6 +87,20 @@ describe('action registry', () => {
       'username',
       'confirmUsername',
     ]);
+    expect(inputOptionsSource('varlens-user-block', 'username')).toBe(
+      'varlens-users',
+    );
+    expect(inputNames('varlens-user-unblock')).toEqual([
+      'targetApp',
+      'targetEnvironment',
+      'username',
+    ]);
+    expect(inputOptionsSource('varlens-user-unblock', 'username')).toBe(
+      'varlens-users',
+    );
+    expect(inputOptionsSource('varlens-user-prune', 'username')).toBe(
+      'varlens-users',
+    );
   });
 });
 
@@ -102,4 +118,10 @@ function inputOptions(actionId: string, inputName: string): readonly string[] {
       (input) => input.name === inputName,
     )?.options || []
   );
+}
+
+function inputOptionsSource(actionId: string, inputName: string): string | undefined {
+  return ACTIONS.find((action) => action.id === actionId)?.inputs.find(
+    (input) => input.name === inputName,
+  )?.optionsSource;
 }

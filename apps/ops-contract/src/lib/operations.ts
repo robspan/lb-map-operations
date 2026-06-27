@@ -58,6 +58,7 @@ export interface ActionInputDefinition {
   readonly type: 'text' | 'select';
   readonly required: boolean;
   readonly options?: readonly string[];
+  readonly optionsSource?: 'varlens-users';
   readonly defaultValue?: string;
   readonly pattern?: string;
   readonly maxLength?: number;
@@ -190,6 +191,18 @@ export interface AppOperationsContract {
 
 export interface ContractsResponse {
   readonly contracts: readonly AppOperationsContract[];
+}
+
+export interface VarLensUserSummary {
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: string;
+  readonly active: boolean;
+  readonly privateDbStatus?: string;
+}
+
+export interface VarLensUsersResponse {
+  readonly users: readonly VarLensUserSummary[];
 }
 
 export interface SuggestedRemedy {

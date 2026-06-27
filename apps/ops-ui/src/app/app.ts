@@ -10,12 +10,14 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import {
   ActionEvidence,
+  ActionInputDefinition,
   ActionRunResult,
   ActionStatus,
   OperationAction,
   OpsRole,
   TargetApp,
   TargetEnvironment,
+  VarLensUserSummary,
 } from '@lb-map-operations/ops-contract';
 import { finalize, forkJoin } from 'rxjs';
 import { DiagnosePanel } from './diagnose-panel';
@@ -64,6 +66,8 @@ const ACTION_HELP: Record<string, string> = {
     'Legt einen normalen VarLens-Nutzer mit eigener Workspace-Datenbank an. Rollen werden nicht bearbeitet.',
   'varlens-user-block':
     'Sperrt den VarLens-Login und deaktiviert die Workspace-Datenbank-Zuordnung, ohne die Datenbank zu löschen.',
+  'varlens-user-unblock':
+    'Entsperrt den VarLens-Login und aktiviert die Workspace-Datenbank-Zuordnung wieder.',
   'varlens-user-prune':
     'Entfernt genau diesen VarLens-Nutzer und dessen abgeleitete Workspace-Datenbank. Das ist keine Infra-Löschung.',
   'rollout-restart':
@@ -114,6 +118,11 @@ const STATUS_LABELS: Record<ActionStatus, string> = {
   rejected: 'Abgelehnt',
 };
 
+type SelectOption = {
+  readonly value: string;
+  readonly label: string;
+};
+
 @Component({
   imports: [
     CommonModule,
@@ -159,6 +168,8 @@ export class App implements OnInit {
   loginUsername = '';
   loginPassword = '';
   users: OpsUserSummary[] = [];
+  varlensUsers: readonly VarLensUserSummary[] = [];
+  varlensUserError = '';
   userError = '';
   auditEvents: readonly OpsAuditEvent[] = [];
   auditLimit = 25;
@@ -219,6 +230,9 @@ export class App implements OnInit {
           this.activeView = 'diagnose';
         }
         this.loaded = true;
+        if (this.isAdmin() && this.hasVarLensUserSelector()) {
+          this.loadVarLensUsers();
+        }
         if (this.activeView === 'users' && this.isAdmin()) {
           this.loadUsers();
         }
@@ -281,6 +295,18 @@ export class App implements OnInit {
     }
   }
 
+  targetChanged(): void {
+    this.confirmingActionId = '';
+    for (const action of this.userMutations) {
+      if (action.id !== 'varlens-user-create') {
+        this.inputs[action.id]['username'] = '';
+      }
+    }
+    if (this.isAdmin() && this.hasVarLensUserSelector()) {
+      this.loadVarLensUsers();
+    }
+  }
+
   isAdmin(): boolean {
     return this.roles.includes('admin');
   }
@@ -298,6 +324,21 @@ export class App implements OnInit {
       },
       error: () => {
         this.userError = 'Benutzer konnten nicht geladen werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  loadVarLensUsers(): void {
+    this.varlensUserError = '';
+    this.api.varlensUsers(this.selectedApp, this.selectedEnvironment).subscribe({
+      next: ({ users }) => {
+        this.varlensUsers = users;
+        this.changeDetector.detectChanges();
+      },
+      error: () => {
+        this.varlensUsers = [];
+        this.varlensUserError = 'VarLens-Nutzer konnten nicht geladen werden.';
         this.changeDetector.detectChanges();
       },
     });
@@ -417,6 +458,13 @@ export class App implements OnInit {
 
   inputHelp(name: string): string {
     return INPUT_HELP[name] || '';
+  }
+
+  inputOptions(action: OperationAction, input: ActionInputDefinition): readonly SelectOption[] {
+    if (input.optionsSource === 'varlens-users') {
+      return this.varlensUserOptions(action);
+    }
+    return (input.options || []).map((option) => ({ value: option, label: option }));
   }
 
   roleLabel(role: string): string {
@@ -543,6 +591,9 @@ export class App implements OnInit {
         next: ({ run }) => {
           this.runs = [run, ...this.runs].slice(0, 25);
           this.selectedRun = run;
+          if (action.id.startsWith('varlens-user-')) {
+            this.loadVarLensUsers();
+          }
           this.changeDetector.detectChanges();
         },
         error: () => {
@@ -557,5 +608,33 @@ export class App implements OnInit {
     return this.actionSpecificInputs(action).some(
       (input) => input.required && !String(values[input.name] || '').trim()
     );
+  }
+
+  private hasVarLensUserSelector(): boolean {
+    return this.userMutations.some((action) =>
+      this.actionSpecificInputs(action).some(
+        (input) => input.optionsSource === 'varlens-users'
+      )
+    );
+  }
+
+  private varlensUserOptions(action: OperationAction): readonly SelectOption[] {
+    return this.varlensUsers
+      .filter((user) => {
+        if (action.id === 'varlens-user-block') {
+          return user.active;
+        }
+        if (action.id === 'varlens-user-unblock') {
+          return !user.active;
+        }
+        return true;
+      })
+      .map((user) => {
+        const status = user.active ? 'aktiv' : 'gesperrt';
+        return {
+          value: user.username,
+          label: `${user.username} (${status})`,
+        };
+      });
   }
 }

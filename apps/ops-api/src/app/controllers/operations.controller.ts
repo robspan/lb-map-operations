@@ -15,6 +15,9 @@ import {
   ActionsResponse,
   ContractsResponse,
   MeResponse,
+  TargetApp,
+  TargetEnvironment,
+  VarLensUsersResponse,
 } from '@lb-map-operations/ops-contract';
 import { IdentityService } from '../identity/identity.service';
 import { visibleActions } from '../actions/action-registry';
@@ -49,6 +52,22 @@ export class OperationsController {
     await this.identity.principalFromRequest(request);
     return {
       contracts: this.contracts.all(),
+    };
+  }
+
+  @Get('apps/:targetApp/environments/:targetEnvironment/varlens-users')
+  async varlensUsers(
+    @Param('targetApp') targetApp: TargetApp,
+    @Param('targetEnvironment') targetEnvironment: TargetEnvironment,
+    @Req() request: Request,
+  ): Promise<VarLensUsersResponse> {
+    const principal = await this.identity.principalFromRequest(request);
+    return {
+      users: await this.runner.varlensUsers(
+        targetApp,
+        targetEnvironment,
+        principal,
+      ),
     };
   }
 

@@ -90,7 +90,7 @@
         <div class="field">
           <mat-form-field appearance="outline" subscriptSizing="dynamic">
             <mat-label>App</mat-label>
-            <mat-select [(ngModel)]="selectedApp">
+            <mat-select [(ngModel)]="selectedApp" (selectionChange)="targetChanged()">
               <mat-option value="varlens">VarLens</mat-option>
             </mat-select>
           </mat-form-field>
@@ -100,7 +100,7 @@
         <div class="field">
           <mat-form-field appearance="outline" subscriptSizing="dynamic">
             <mat-label>Umgebung</mat-label>
-            <mat-select [(ngModel)]="selectedEnvironment">
+            <mat-select [(ngModel)]="selectedEnvironment" (selectionChange)="targetChanged()">
               <mat-option value="dev">Entwicklung (dev)</mat-option>
               <mat-option value="test">Test (test)</mat-option>
             </mat-select>
@@ -372,8 +372,8 @@
                               [(ngModel)]="inputs[action.id][input.name]"
                               [attr.data-field]="input.name"
                             >
-                              @for (option of input.options; track option) {
-                                <mat-option [value]="option">{{ option }}</mat-option>
+                              @for (option of inputOptions(action, input); track option.value) {
+                                <mat-option [value]="option.value">{{ option.label }}</mat-option>
                               }
                             </mat-select>
                           } @else {
@@ -405,6 +405,9 @@
                   <app-info
                     text="Admin-Operationen für normale VarLens-Nutzer. Keine Rechtebearbeitung und keine Einsicht in private Falldaten."
                   />
+                  @if (varlensUserError) {
+                    <span class="error">{{ varlensUserError }}</span>
+                  }
                 </header>
                 @for (action of userMutations; track action.id) {
                   <ng-container *ngTemplateOutlet="actionTile; context: { $implicit: action }"></ng-container>

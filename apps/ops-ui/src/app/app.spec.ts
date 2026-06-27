@@ -54,6 +54,34 @@ const varlensUserMutation = {
   ],
 };
 
+const varlensUserBlockMutation = {
+  id: 'varlens-user-block',
+  title: 'VarLens-Nutzer sperren',
+  description: 'VarLens-Nutzer sperren.',
+  role: 'admin',
+  kind: 'mutation',
+  targetApp: 'varlens',
+  inputs: [
+    { name: 'targetApp', label: 'App', type: 'select', required: true, options: ['varlens'], defaultValue: 'varlens' },
+    { name: 'targetEnvironment', label: 'Umgebung', type: 'select', required: true, options: ['dev', 'test'], defaultValue: 'test' },
+    { name: 'username', label: 'VarLens-Benutzer', type: 'select', required: true, optionsSource: 'varlens-users' },
+  ],
+};
+
+const varlensUserUnblockMutation = {
+  id: 'varlens-user-unblock',
+  title: 'VarLens-Nutzer entsperren',
+  description: 'VarLens-Nutzer entsperren.',
+  role: 'admin',
+  kind: 'mutation',
+  targetApp: 'varlens',
+  inputs: [
+    { name: 'targetApp', label: 'App', type: 'select', required: true, options: ['varlens'], defaultValue: 'varlens' },
+    { name: 'targetEnvironment', label: 'Umgebung', type: 'select', required: true, options: ['dev', 'test'], defaultValue: 'test' },
+    { name: 'username', label: 'VarLens-Benutzer', type: 'select', required: true, optionsSource: 'varlens-users' },
+  ],
+};
+
 describe('App', () => {
   beforeEach(async () => {
     localStorage.clear();
@@ -371,6 +399,44 @@ describe('App', () => {
 
     http.expectNone('/api/actions/varlens-user-create/runs');
     expect(document.body.textContent).toContain('VarLens-Nutzer anlegen');
+  });
+
+  it('loads VarLens users for lifecycle dropdowns and separates block from unblock choices', async () => {
+    const { fixture, http } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [varlensUserBlockMutation, varlensUserUnblockMutation]
+    );
+    http.expectOne('/api/apps/varlens/environments/test/varlens-users').flush({
+      users: [
+        {
+          username: 'active-user',
+          displayName: 'Active User',
+          role: 'user',
+          active: true,
+          privateDbStatus: 'active',
+        },
+        {
+          username: 'blocked-user',
+          displayName: 'Blocked User',
+          role: 'user',
+          active: false,
+          privateDbStatus: 'disabled',
+        },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    expect(component.inputOptions(component.userMutations[0], component.userMutations[0].inputs[2])).toEqual([
+      { value: 'active-user', label: 'active-user (aktiv)' },
+    ]);
+    expect(component.inputOptions(component.userMutations[1], component.userMutations[1].inputs[2])).toEqual([
+      { value: 'blocked-user', label: 'blocked-user (gesperrt)' },
+    ]);
+    expect(component.actionReady(component.userMutations[0])).toBe(false);
+    component.inputs['varlens-user-block']['username'] = 'active-user';
+    expect(component.actionReady(component.userMutations[0])).toBe(true);
   });
 
   afterEach(() => {

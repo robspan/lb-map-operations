@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { Client } from 'pg';
 import {
   ActionEvidence,
   ActionRunRequest,
@@ -14,6 +15,7 @@ import {
   DiagnosisStreamEvent,
   OpsPrincipal,
   TargetEnvironment,
+  VarLensUserSummary,
   roleAllows,
 } from '@lb-map-operations/ops-contract';
 import { ArgoClient } from '../clients/argo.client';
@@ -73,6 +75,10 @@ type JobLike = {
 
 type KubernetesListLike<T> = {
   readonly items?: readonly T[];
+};
+
+type KubernetesSecretLike = {
+  readonly data?: Record<string, string>;
 };
 
 type ConditionLike = {
@@ -339,6 +345,39 @@ async function main() {
       [username]
     )
     console.log(JSON.stringify({ ok: true, username, action: 'blocked' }))
+  } finally {
+    await client.end()
+  }
+}
+main().catch((error) => {
+  console.error(JSON.stringify({ ok: false, error: error.message }))
+  process.exit(1)
+})
+NODE
+`;
+
+const VARLENS_USER_UNBLOCK_SCRIPT = String.raw`
+set -euo pipefail
+node <<'NODE'
+const { Client } = require('pg')
+async function main() {
+  const username = process.env.VARLENS_OPS_USERNAME
+  const url = process.env.VARLENS_CONTROL_STATE_PG_URL || process.env.VARLENS_PG_URL
+  if (!username || !url) throw new Error('username/control URL missing')
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  try {
+    const existing = await client.query(
+      'SELECT id, role FROM public.users WHERE username = $1',
+      [username]
+    )
+    if (!existing.rowCount) throw new Error('User not found: ' + username)
+    if (existing.rows[0].role === 'admin') throw new Error('Cannot unblock an admin user')
+    await client.query(
+      "UPDATE public.users SET is_active = TRUE, private_db_status = CASE WHEN private_db_status = 'disabled' THEN 'active' ELSE private_db_status END, updated_at = now() WHERE username = $1",
+      [username]
+    )
+    console.log(JSON.stringify({ ok: true, username, action: 'unblocked' }))
   } finally {
     await client.end()
   }
@@ -668,6 +707,52 @@ export class ActionRunnerService {
     return run;
   }
 
+  async varlensUsers(
+    targetApp: 'varlens',
+    targetEnvironment: TargetEnvironment,
+    principal: OpsPrincipal,
+  ): Promise<readonly VarLensUserSummary[]> {
+    this.identity.requireRole(principal, 'admin');
+    const target = this.config.target(targetApp, validateEnvironment(targetEnvironment));
+    const secret = await this.kubernetes.getPath<KubernetesSecretLike>(
+      `/api/v1/namespaces/${target.namespace}/secrets/varlens-postgres-app`,
+    );
+    const encodedUri = secret.data?.uri;
+    if (!encodedUri) {
+      throw new Error('VarLens control database URL is not configured.');
+    }
+
+    const client = new Client({
+      connectionString: Buffer.from(encodedUri, 'base64').toString('utf8'),
+    });
+    await client.connect();
+    try {
+      const result = await client.query<{
+        username: string;
+        display_name: string | null;
+        role: string;
+        is_active: boolean;
+        private_db_status: string | null;
+      }>(
+        `
+          SELECT username, display_name, role, is_active, private_db_status
+          FROM public.users
+          WHERE role <> 'admin'
+          ORDER BY username ASC
+        `,
+      );
+      return result.rows.map((row) => ({
+        username: row.username,
+        displayName: row.display_name || row.username,
+        role: row.role,
+        active: row.is_active,
+        privateDbStatus: row.private_db_status || undefined,
+      }));
+    } finally {
+      await client.end();
+    }
+  }
+
   private async execute(
     actionId: string,
     target: TargetConfig,
@@ -708,6 +793,8 @@ export class ActionRunnerService {
         return this.varlensUserCreate(target, inputs, principal);
       case 'varlens-user-block':
         return this.varlensUserBlock(target, inputs, principal);
+      case 'varlens-user-unblock':
+        return this.varlensUserUnblock(target, inputs, principal);
       case 'varlens-user-prune':
         return this.varlensUserPrune(target, inputs, principal);
       case 'rollout-restart':
@@ -846,6 +933,36 @@ export class ActionRunnerService {
     };
   }
 
+  private async varlensUserUnblock(
+    target: TargetConfig,
+    inputs: Record<string, string>,
+    principal: OpsPrincipal,
+  ): Promise<ActionOutput> {
+    const username = validateVarLensUsername(inputs.username);
+    const jobName = lifecycleJobName('unblock', username);
+    await this.createVarLensLifecycleJob(target, {
+      jobName,
+      operation: 'unblock',
+      username,
+      actor: principal.user,
+      env: [{ name: 'VARLENS_OPS_USERNAME', value: username }],
+      script: VARLENS_USER_UNBLOCK_SCRIPT,
+    });
+    const job = await this.waitForLifecycleJob(target, jobName, 60_000);
+    await this.kubernetes.deleteJob(target.namespace, jobName);
+    if (job.status?.failed) {
+      throw new Error(`Entsperr-Job ${jobName} ist fehlgeschlagen.`);
+    }
+    return {
+      summary: `VarLens-Nutzer ${username} wurde entsperrt.`,
+      evidence: [
+        { label: 'Benutzer', value: username },
+        { label: 'Login', value: 'aktiv' },
+        { label: 'Workspace-Zuordnung', value: 'active' },
+      ],
+    };
+  }
+
   private async varlensUserPrune(
     target: TargetConfig,
     inputs: Record<string, string>,
@@ -899,7 +1016,7 @@ export class ActionRunnerService {
     target: TargetConfig,
     options: {
       readonly jobName: string;
-      readonly operation: 'create' | 'block' | 'prune';
+      readonly operation: VarLensUserLifecycleOperation;
       readonly username: string;
       readonly actor: string;
       readonly env: readonly Record<string, unknown>[];
@@ -2020,17 +2137,16 @@ function postgresUrl(role: string, password: string, dbName: string): string {
   return `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(password)}@varlens-postgres-rw:5432/${encodeURIComponent(dbName)}`;
 }
 
-function lifecycleJobName(
-  operation: 'create' | 'block' | 'prune',
-  username: string,
-): string {
+type VarLensUserLifecycleOperation = 'create' | 'block' | 'unblock' | 'prune';
+
+function lifecycleJobName(operation: VarLensUserLifecycleOperation, username: string): string {
   return `varlens-ops-user-${operation}-${stableK8sSuffix(username)}`.slice(0, 63);
 }
 
 function varlensUserJobLabels(
   target: TargetConfig,
   username: string,
-  operation: 'create' | 'block' | 'prune',
+  operation: VarLensUserLifecycleOperation,
 ): Record<string, string> {
   return {
     'app.kubernetes.io/name': target.serviceName,

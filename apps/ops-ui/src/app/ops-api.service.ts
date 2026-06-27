@@ -7,6 +7,9 @@ import {
   ContractsResponse,
   DiagnosisStreamEvent,
   MeResponse,
+  TargetApp,
+  TargetEnvironment,
+  VarLensUsersResponse,
 } from '@lb-map-operations/ops-contract';
 import { Observable } from 'rxjs';
 
@@ -62,6 +65,14 @@ export class OpsApiService {
 
   actions() {
     return this.http.get<ActionsResponse>('/api/actions');
+  }
+
+  varlensUsers(app: TargetApp, environment: TargetEnvironment) {
+    return this.http.get<VarLensUsersResponse>(
+      `/api/apps/${encodeURIComponent(app)}/environments/${encodeURIComponent(
+        environment
+      )}/varlens-users`
+    );
   }
 
   contracts() {

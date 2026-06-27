@@ -104,13 +104,21 @@ const resourceLimitInput: ActionInputDefinition = {
   defaultValue: '10',
 };
 
-const varlensUsernameInput: ActionInputDefinition = {
+const varlensNewUsernameInput: ActionInputDefinition = {
   name: 'username',
   label: 'VarLens-Benutzer',
   type: 'text',
   required: true,
   pattern: '^[A-Za-z0-9._@+-]{1,100}$',
   maxLength: 100,
+};
+
+const varlensExistingUsernameInput: ActionInputDefinition = {
+  name: 'username',
+  label: 'VarLens-Benutzer',
+  type: 'select',
+  required: true,
+  optionsSource: 'varlens-users',
 };
 
 const varlensDisplayNameInput: ActionInputDefinition = {
@@ -313,7 +321,7 @@ export const ACTIONS: readonly OperationAction[] = [
     inputs: [
       targetAppInput,
       targetEnvironmentInput,
-      varlensUsernameInput,
+      varlensNewUsernameInput,
       varlensDisplayNameInput,
       varlensInitialPasswordInput,
     ],
@@ -326,7 +334,25 @@ export const ACTIONS: readonly OperationAction[] = [
     role: 'admin',
     kind: 'mutation',
     targetApp: 'varlens',
-    inputs: [targetAppInput, targetEnvironmentInput, varlensUsernameInput],
+    inputs: [
+      targetAppInput,
+      targetEnvironmentInput,
+      varlensExistingUsernameInput,
+    ],
+  },
+  {
+    id: 'varlens-user-unblock',
+    title: 'VarLens-Nutzer entsperren',
+    description:
+      'Entsperrt den VarLens-Login und aktiviert die Workspace-DB-Zuordnung wieder.',
+    role: 'admin',
+    kind: 'mutation',
+    targetApp: 'varlens',
+    inputs: [
+      targetAppInput,
+      targetEnvironmentInput,
+      varlensExistingUsernameInput,
+    ],
   },
   {
     id: 'varlens-user-prune',
@@ -339,7 +365,7 @@ export const ACTIONS: readonly OperationAction[] = [
     inputs: [
       targetAppInput,
       targetEnvironmentInput,
-      varlensUsernameInput,
+      varlensExistingUsernameInput,
       confirmUsernameInput,
     ],
   },
