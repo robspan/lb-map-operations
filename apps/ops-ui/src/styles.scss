@@ -1,0 +1,27 @@
+/* You can add global styles to this file, and also import other style files */
+@import '@angular/material/prebuilt-themes/azure-blue.css';
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #eef3f6;
+  color: #152027;
+  font-family: Roboto, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Info-button tooltips render in the global CDK overlay, so style them here. */
+.info-tooltip.mat-mdc-tooltip .mdc-tooltip__surface {
+  max-width: 320px;
+  white-space: pre-line;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: left;
+}

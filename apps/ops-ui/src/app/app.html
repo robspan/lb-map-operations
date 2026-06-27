@@ -1,0 +1,275 @@
+<mat-toolbar class="topbar">
+  <span class="brand">LB-MAP Operations</span>
+  <span class="spacer"></span>
+  @if (actor) {
+    <span class="actor">{{ actor }}</span>
+    <mat-chip-set aria-label="Rollen">
+      @for (role of roles; track role) {
+        <mat-chip class="role-chip">{{ roleLabel(role) }}</mat-chip>
+      }
+    </mat-chip-set>
+  }
+</mat-toolbar>
+
+<section class="target" aria-label="Ziel">
+  <div class="field">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>App</mat-label>
+      <mat-select [(ngModel)]="selectedApp">
+        <mat-option value="varlens">VarLens</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <app-info [text]="uiHelp.app" />
+  </div>
+
+  <div class="field">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Umgebung</mat-label>
+      <mat-select [(ngModel)]="selectedEnvironment">
+        <mat-option value="dev">Entwicklung (dev)</mat-option>
+        <mat-option value="test">Test (test)</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <app-info [text]="uiHelp.environment" />
+  </div>
+
+  <div class="field view-switch">
+    <mat-button-toggle-group
+      [value]="activeView"
+      (change)="setView($event.value)"
+      aria-label="Ansicht"
+      data-testid="view-switch"
+    >
+      <mat-button-toggle value="diagnose">Diagnose</mat-button-toggle>
+      <mat-button-toggle value="operations">Operationen</mat-button-toggle>
+      <mat-button-toggle value="contract">Standard-Setup</mat-button-toggle>
+    </mat-button-toggle-group>
+    <app-info [text]="uiHelp.view" />
+  </div>
+
+  <span class="spacer"></span>
+  @if (activeView === 'operations') {
+    <div class="field">
+      <mat-slide-toggle
+        class="expert-toggle"
+        [checked]="expertMode"
+        (change)="setExpertMode($event.checked)"
+        data-testid="expert-toggle"
+      >
+        Expertenmodus
+      </mat-slide-toggle>
+      <app-info [text]="uiHelp.expert" />
+    </div>
+  }
+  <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">
+    Aktualisieren
+  </button>
+</section>
+
+@if (runningActionId) {
+  <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+}
+
+@if (loadError) {
+  <p class="banner error">{{ loadError }}</p>
+}
+
+@if (loaded && !loadError && activeView === 'diagnose') {
+  <main class="diagnose-view">
+    <app-diagnose-panel
+      [app]="selectedApp"
+      [environment]="selectedEnvironment"
+      [roles]="roles"
+    />
+  </main>
+}
+
+@if (loaded && !loadError && activeView === 'contract') {
+  <main class="contract-view">
+    @if (currentContract) {
+      <app-contract-panel [contract]="currentContract" />
+    } @else {
+      <p class="muted empty">
+        Kein Operations-Vertrag für {{ selectedApp }}/{{ selectedEnvironment }} gefunden.
+      </p>
+    }
+  </main>
+}
+
+@if (loaded && !loadError && activeView === 'operations') {
+  <main class="shell">
+    <div class="actions" aria-label="Operationen">
+      <section class="group">
+        <header class="group-head">
+          <h2>Diagnose-Aktionen</h2>
+          <span class="group-note">nur lesend</span>
+          <app-info [text]="uiHelp.diagnose" />
+        </header>
+        @for (action of diagnostics; track action.id) {
+          <article class="action" data-testid="action-card">
+            <div class="action-main">
+              <h3>{{ action.title }}</h3>
+              <p>{{ action.description }}</p>
+            </div>
+            <app-info [text]="helpFor(action)" />
+            @if (expertMode && hasConfig(action)) {
+              <button
+                class="config-button"
+                mat-icon-button
+                type="button"
+                aria-label="Konfiguration"
+                data-testid="config-button"
+                [disabled]="!!runningActionId"
+                (click)="openConfig(action)"
+              >
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
+                  />
+                </svg>
+                @if (customizedCount(action)) {
+                  <span class="config-badge" aria-hidden="true"></span>
+                }
+              </button>
+            }
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              data-testid="run-action"
+              [disabled]="!!runningActionId"
+              (click)="run(action)"
+            >
+              Starten
+            </button>
+          </article>
+        }
+      </section>
+
+      @if (mutations.length) {
+        <section class="group">
+          <header class="group-head">
+            <h2>Eingriffe</h2>
+            <span class="group-note warn">verändert die Live-Umgebung</span>
+            <app-info [text]="uiHelp.eingriffe" />
+          </header>
+          @for (action of mutations; track action.id) {
+            <article class="action is-mutation" data-testid="action-card">
+              <div class="action-main">
+                <h3>{{ action.title }}</h3>
+                <p>{{ action.description }}</p>
+              </div>
+              <app-info [text]="helpFor(action)" />
+              @if (confirmingActionId === action.id) {
+                <div class="confirm">
+                  <span class="confirm-note">
+                    {{ action.title }} auf {{ selectedApp }}/{{ selectedEnvironment }} ausführen?
+                  </span>
+                  <button mat-stroked-button type="button" (click)="cancel()">Abbrechen</button>
+                  <button
+                    mat-flat-button
+                    color="warn"
+                    type="button"
+                    data-testid="confirm-action"
+                    [disabled]="!!runningActionId"
+                    (click)="confirm(action)"
+                  >
+                    Bestätigen
+                  </button>
+                </div>
+              } @else {
+                <button
+                  mat-stroked-button
+                  color="warn"
+                  type="button"
+                  data-testid="run-action"
+                  [disabled]="!!runningActionId"
+                  (click)="run(action)"
+                >
+                  Ausführen
+                </button>
+              }
+            </article>
+          }
+        </section>
+      }
+    </div>
+
+    <aside class="results" aria-label="Ergebnis">
+      @if (runError) {
+        <p class="banner error">{{ runError }}</p>
+      }
+
+      <section class="result">
+        <h2 class="section-title">Ergebnis <app-info [text]="uiHelp.result" /></h2>
+        @if (selectedRun) {
+          <div class="result-card">
+            <div class="result-head">
+              <span class="status status-{{ selectedRun.status }}">{{
+                statusLabel(selectedRun.status)
+              }}</span>
+              <strong>{{ titleFor(selectedRun.actionId) }}</strong>
+              <span class="muted">{{ selectedRun.targetApp }}/{{ selectedRun.targetEnvironment }}</span>
+              <span class="muted">{{
+                selectedRun.finishedAt || selectedRun.startedAt | date: 'HH:mm:ss'
+              }}</span>
+            </div>
+            <p class="result-summary">{{ selectedRun.summary }}</p>
+            @if (selectedRun.message) {
+              <p class="error">{{ selectedRun.message }}</p>
+            }
+            <div class="evidence">
+              @for (item of selectedRun.evidence; track $index) {
+                <div class="evidence-row" [class.is-log]="!evidenceUrl(item) && isLog(item)">
+                  <div class="evidence-label">{{ item.label }}</div>
+                  @if (evidenceUrl(item); as url) {
+                    <div class="evidence-value">
+                      <a [href]="url" target="_blank" rel="noopener">{{ url }}</a>
+                    </div>
+                  } @else if (isLog(item)) {
+                    <pre class="evidence-log">{{ item.value }}</pre>
+                  } @else {
+                    <div class="evidence-value">{{ item.value }}</div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <p class="muted empty">Noch keine Aktion ausgeführt. Wähle links eine Diagnose.</p>
+        }
+      </section>
+
+      @if (runs.length) {
+        <section class="history">
+          <h2 class="section-title">Verlauf <app-info [text]="uiHelp.history" /></h2>
+          <ul>
+            @for (entry of runs; track entry.runId) {
+              <li>
+                <button
+                  type="button"
+                  class="history-item"
+                  [class.active]="entry.runId === selectedRun?.runId"
+                  (click)="select(entry)"
+                >
+                  <span
+                    class="status-dot status-{{ entry.status }}"
+                    role="img"
+                    [attr.aria-label]="'Status: ' + statusLabel(entry.status)"
+                    [attr.title]="statusLabel(entry.status)"
+                  ></span>
+                  <span class="history-title">{{ titleFor(entry.actionId) }}</span>
+                  <span class="muted">{{ entry.targetEnvironment }}</span>
+                  <span class="muted">{{
+                    entry.finishedAt || entry.startedAt | date: 'HH:mm:ss'
+                  }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    </aside>
+  </main>
+}

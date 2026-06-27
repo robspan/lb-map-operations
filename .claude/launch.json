@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ops-ui",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "ops-ui"],
+      "port": 4200
+    }
+  ]
+}

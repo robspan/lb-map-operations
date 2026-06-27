@@ -1,0 +1,23 @@
+{
+  "name": "ops-contract",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/ops-contract/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/apps/ops-contract",
+        "main": "apps/ops-contract/src/index.ts",
+        "tsConfig": "apps/ops-contract/tsconfig.lib.json",
+        "assets": [
+          "apps/ops-contract/*.md"
+        ]
+      }
+    }
+  }
+}

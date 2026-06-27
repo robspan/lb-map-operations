@@ -1,0 +1,211 @@
+<section class="diagnose">
+  <header class="diagnose-head">
+    <div class="intro">
+      <h2 class="section-title">
+        Diagnose
+        <app-info
+          text="Prüft automatisch die Standard-Signale (ArgoCD, Kubernetes, Endpunkte, Smoke-Status, Prometheus, Loki) und schlägt passende Abhilfe vor – ohne Konsole oder Datenbankzugriff."
+        />
+      </h2>
+      <p class="muted">
+        Automatische Prüfung für {{ app }}/{{ environment }} mit Hinweisen zur Behebung.
+      </p>
+    </div>
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      class="start-button"
+      data-testid="diagnose-start"
+      [disabled]="running"
+      (click)="start()"
+    >
+      {{ running ? 'Diagnose läuft …' : 'Diagnose starten' }}
+    </button>
+  </header>
+
+  @if (running) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  }
+
+  @if (error) {
+    <p class="banner error">{{ error }}</p>
+  }
+
+  @if (steps.length) {
+    <section class="steps">
+      <button class="expander" type="button" (click)="toggleSteps()">
+        Geprüfte Signale ({{ steps.length }}) {{ stepsExpanded ? '▲' : '▼' }}
+      </button>
+      @if (running || stepsExpanded) {
+        <ul>
+          @for (step of steps; track step.stepId) {
+            <li class="step step-{{ step.status }}">
+              <span class="step-icon" aria-hidden="true"></span>
+              <span class="step-label">{{ step.label }}</span>
+              <span class="step-status">{{ stepStatusLabel(step.status) }}</span>
+              @if (step.detail) {
+                <span class="muted step-detail">{{ step.detail }}</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+
+  @if (selectedRun?.diagnosis) {
+    <section class="report">
+      <div class="report-head">
+        <h3>Befunde</h3>
+        <span class="muted">
+          {{ selectedRun?.diagnosis?.generatedAt | date: 'dd.MM.yyyy HH:mm:ss' }}
+        </span>
+      </div>
+
+      @for (finding of findings; track finding.findingId) {
+        <article class="finding sev-{{ finding.severity }}" data-testid="finding">
+          <header class="finding-head">
+            <span class="sev-badge sev-{{ finding.severity }}">
+              {{ severityLabel(finding.severity) }}
+            </span>
+            <h4>{{ finding.summary }}</h4>
+            <span class="muted conf">Konfidenz: {{ confidenceLabel(finding.confidence) }}</span>
+          </header>
+          <p class="cause"><strong>Mögliche Ursache:</strong> {{ finding.likelyCause }}</p>
+
+          @if (finding.remedies.length) {
+            <div class="remedies">
+              <h5>Vorgeschlagene Abhilfe</h5>
+              @for (remedy of finding.remedies; track remedy.remedyId) {
+                <div class="remedy">
+                  <div class="remedy-info">
+                    <div class="remedy-title">
+                      <strong>{{ remedy.title }}</strong>
+                      <span class="risk risk-{{ remedy.risk }}">Risiko: {{ riskLabel(remedy.risk) }}</span>
+                    </div>
+                    <p>{{ remedy.description }}</p>
+                    @if (!remedy.enabled && remedy.disabledReason) {
+                      <p class="muted disabled-reason">{{ remedy.disabledReason }}</p>
+                    }
+                  </div>
+                  <div class="remedy-actions">
+                    @if (confirmingRemedyId === remedy.remedyId) {
+                      <span class="confirm-note">Live-Umgebung verändern?</span>
+                      <button mat-stroked-button type="button" (click)="cancelRemedy()">Abbrechen</button>
+                      <button
+                        mat-flat-button
+                        color="warn"
+                        type="button"
+                        data-testid="remedy-confirm"
+                        [disabled]="!!runningRemedyId"
+                        (click)="confirmRemedy(remedy)"
+                      >
+                        Bestätigen
+                      </button>
+                    } @else {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        data-testid="remedy-run"
+                        [color]="remedy.risk === 'none' ? 'primary' : 'warn'"
+                        [disabled]="!remedy.enabled || !!runningRemedyId"
+                        (click)="requestRemedy(remedy)"
+                      >
+                        {{ remedy.risk === 'none' ? 'Anzeigen' : 'Ausführen' }}
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                @if (remedyRuns[remedy.remedyId]; as rr) {
+                  <div class="remedy-result">
+                    <button class="expander" type="button" (click)="toggleRemedy(remedy.remedyId)">
+                      <span class="status-pill status-{{ rr.status }}">{{ runStatusLabel(rr.status) }}</span>
+                      {{ rr.summary }}
+                      <span class="caret">{{ remedyExpanded(remedy.remedyId) ? '▲' : '▼' }}</span>
+                    </button>
+                    @if (rr.message) {
+                      <p class="error">{{ rr.message }}</p>
+                    }
+                    @if (remedyExpanded(remedy.remedyId) && rr.evidence.length) {
+                      <dl class="evidence">
+                        @for (item of rr.evidence; track $index) {
+                          <dt>{{ item.label }}</dt>
+                          <dd>
+                            @if (evidenceUrl(item); as url) {
+                              <a [href]="url" target="_blank" rel="noopener">{{ url }}</a>
+                            } @else if (isLog(item)) {
+                              <pre>{{ item.value }}</pre>
+                            } @else {
+                              {{ item.value }}
+                            }
+                          </dd>
+                        }
+                      </dl>
+                    }
+                  </div>
+                }
+              }
+            </div>
+          }
+
+          @if (finding.evidence.length) {
+            <button
+              class="expander details"
+              type="button"
+              data-testid="finding-details"
+              (click)="toggleFinding(finding.findingId)"
+            >
+              {{ findingExpanded(finding.findingId) ? 'Details ausblenden' : 'Details anzeigen' }}
+            </button>
+            @if (findingExpanded(finding.findingId)) {
+              <dl class="evidence">
+                @for (item of finding.evidence; track $index) {
+                  <dt>{{ item.label }}</dt>
+                  <dd>
+                    @if (evidenceUrl(item); as url) {
+                      <a [href]="url" target="_blank" rel="noopener">{{ url }}</a>
+                    } @else if (isLog(item)) {
+                      <pre>{{ item.value }}</pre>
+                    } @else {
+                      {{ item.value }}
+                    }
+                  </dd>
+                }
+              </dl>
+            }
+          }
+        </article>
+      }
+    </section>
+  } @else if (!running) {
+    <p class="muted empty">Noch keine Diagnose ausgeführt. Auf „Diagnose starten" klicken.</p>
+  }
+
+  @if (runs.length > 1) {
+    <section class="history">
+      <h3>Frühere Diagnosen</h3>
+      <ul>
+        @for (run of runs; track run.runId) {
+          <li>
+            <button
+              type="button"
+              class="history-item"
+              [class.active]="run.runId === selectedRun?.runId"
+              (click)="select(run)"
+            >
+              <span
+                class="status-dot sev-{{ worstSeverity(run) }}"
+                role="img"
+                [attr.aria-label]="'Schwere: ' + severityLabel(worstSeverity(run))"
+              ></span>
+              <span class="history-count">{{ run.diagnosis?.findings?.length || 0 }} Befund(e)</span>
+              <span class="muted">{{ run.finishedAt || run.startedAt | date: 'HH:mm:ss' }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+</section>

@@ -1,0 +1,417 @@
+$ink: #1f2a30;
+$line: #d5dce3;
+$muted: #5f7079;
+$danger: #b00020;
+$warn: #b26a00;
+$ok: #2e7d32;
+$info: #1565c0;
+
+.diagnose {
+  display: grid;
+  gap: 18px;
+  max-width: 1100px;
+}
+
+.diagnose-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: $ink;
+}
+
+.intro .muted {
+  margin: 4px 0 0;
+}
+
+.start-button {
+  flex: 0 0 auto;
+  height: 44px;
+  font-size: 0.95rem;
+}
+
+.muted {
+  color: $muted;
+  font-size: 0.85rem;
+}
+
+.banner.error,
+.error {
+  margin: 0;
+  color: $danger;
+}
+
+.empty {
+  border: 1px dashed $line;
+  border-radius: 8px;
+  padding: 28px;
+  text-align: center;
+}
+
+.expander {
+  border: none;
+  background: none;
+  padding: 4px 0;
+  color: $info;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+/* steps */
+.steps ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: $ink;
+}
+
+.step-icon {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: $muted;
+}
+
+.step-running .step-icon {
+  background: $info;
+}
+.step-succeeded .step-icon {
+  background: $ok;
+}
+.step-failed .step-icon {
+  background: $danger;
+}
+.step-skipped .step-icon {
+  background: #b7c1c8;
+}
+
+.step-label {
+  flex: 1 1 auto;
+}
+
+.step-status {
+  font-size: 0.78rem;
+  color: $muted;
+}
+
+.step-detail {
+  flex-basis: 100%;
+  margin-left: 19px;
+}
+
+/* report */
+.report-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.report-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: $ink;
+}
+
+.finding {
+  border: 1px solid $line;
+  border-left: 4px solid $muted;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+
+.finding.sev-critical {
+  border-left-color: $danger;
+}
+.finding.sev-warning {
+  border-left-color: $warn;
+}
+.finding.sev-info {
+  border-left-color: $info;
+}
+
+.finding-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.finding-head h4 {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.98rem;
+  color: $ink;
+}
+
+.sev-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #fff;
+  background: $muted;
+}
+.sev-badge.sev-critical {
+  background: $danger;
+}
+.sev-badge.sev-warning {
+  background: $warn;
+}
+.sev-badge.sev-info {
+  background: $info;
+}
+
+.conf {
+  white-space: nowrap;
+}
+
+.cause {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: #33414a;
+}
+
+/* remedies */
+.remedies {
+  margin-top: 14px;
+  border-top: 1px solid #eef2f5;
+  padding-top: 12px;
+}
+
+.remedies h5 {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: $muted;
+}
+
+.remedy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.remedy + .remedy,
+.remedy-result + .remedy {
+  border-top: 1px dashed #eef2f5;
+}
+
+.remedy-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.remedy-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.remedy-info p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: #3b4a52;
+}
+
+.disabled-reason {
+  font-style: italic;
+}
+
+.risk {
+  font-size: 0.72rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: $muted;
+}
+.risk-low,
+.risk-medium {
+  background: #fdf0e3;
+  color: $warn;
+}
+
+.remedy-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.confirm-note {
+  font-size: 0.8rem;
+  color: $danger;
+}
+
+.remedy-result {
+  padding: 6px 0 10px 0;
+}
+
+.remedy-result .expander {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.caret {
+  margin-left: auto;
+  color: $muted;
+}
+
+.status-pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: $muted;
+}
+.status-pill.status-succeeded {
+  background: $ok;
+}
+.status-pill.status-failed {
+  background: $danger;
+}
+
+/* evidence */
+.evidence {
+  display: grid;
+  grid-template-columns: minmax(150px, 230px) 1fr;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+}
+
+.evidence dt {
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: $ink;
+  overflow-wrap: anywhere;
+}
+
+.evidence dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.evidence pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: #11181d;
+  color: #d7e2e9;
+  font-size: 0.76rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* history */
+.history h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  color: $ink;
+}
+
+.history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid $line;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.history-item:hover {
+  background: #f3f7fa;
+}
+.history-item.active {
+  border-color: $info;
+  background: #eef4fb;
+}
+
+.history-count {
+  flex: 1 1 auto;
+  font-size: 0.88rem;
+  color: $ink;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: $muted;
+}
+.status-dot.sev-critical {
+  background: $danger;
+}
+.status-dot.sev-warning {
+  background: $warn;
+}
+.status-dot.sev-info {
+  background: $info;
+}
+
+@media (max-width: 640px) {
+  .remedy {
+    flex-direction: column;
+  }
+  .remedy-actions {
+    justify-content: flex-start;
+  }
+  .evidence {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .evidence dd {
+    margin-bottom: 8px;
+  }
+}

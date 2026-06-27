@@ -1,0 +1,225 @@
+<article class="contract" data-testid="contract-panel">
+  <header class="contract-head">
+    <h2 class="section-title">
+      Operations-Vertrag
+      <app-info
+        text="Standardisiertes Betriebs-Setup, das die Plattform für diese App und Umgebung garantiert: Endpunkte, Workload, ArgoCD, Observability, Smoke-Tests und First-Level-Felder."
+      />
+    </h2>
+    <span class="target-chip">{{ contract.app }} / {{ contract.environment }}</span>
+  </header>
+
+  <section class="block">
+    <h3>
+      Endpunkte
+      <app-info text="Standard-Pfade für Liveness (/livez), Readiness (/readyz) und Health (/healthz). Interne URLs sind nur im Cluster erreichbar." />
+    </h3>
+    <dl>
+      <dt>Liveness</dt>
+      <dd>
+        <code>{{ contract.endpoints.livenessUrl }}</code>
+        <button mat-button type="button" class="copy" (click)="copy(contract.endpoints.livenessUrl, 'live')">
+          {{ copiedKey === 'live' ? 'Kopiert' : 'Kopieren' }}
+        </button>
+      </dd>
+      <dt>Readiness</dt>
+      <dd>
+        <code>{{ contract.endpoints.readinessUrl }}</code>
+        <button mat-button type="button" class="copy" (click)="copy(contract.endpoints.readinessUrl, 'ready')">
+          {{ copiedKey === 'ready' ? 'Kopiert' : 'Kopieren' }}
+        </button>
+      </dd>
+      <dt>Health</dt>
+      <dd>
+        <code>{{ contract.endpoints.healthUrl }}</code>
+        <button mat-button type="button" class="copy" (click)="copy(contract.endpoints.healthUrl, 'health')">
+          {{ copiedKey === 'health' ? 'Kopiert' : 'Kopieren' }}
+        </button>
+      </dd>
+      @if (contract.endpoints.publicHealthUrl) {
+        <dt>Öffentlich</dt>
+        <dd>
+          <a [href]="contract.endpoints.publicHealthUrl" target="_blank" rel="noopener">
+            {{ contract.endpoints.publicHealthUrl }}
+          </a>
+        </dd>
+      }
+    </dl>
+  </section>
+
+  <section class="block">
+    <h3>
+      Workload
+      <app-info text="Kubernetes-Objekte der App: Namespace, Deployment, Service und Pod-Selector sowie ob ein rollierender Neustart erlaubt ist." />
+    </h3>
+    <dl>
+      <dt>Namespace</dt>
+      <dd><code>{{ contract.workload.namespace }}</code></dd>
+      <dt>Deployment</dt>
+      <dd><code>{{ contract.workload.deployment }}</code></dd>
+      <dt>Service</dt>
+      <dd><code>{{ contract.workload.serviceName }}</code></dd>
+      <dt>Pod-Selector</dt>
+      <dd><code>{{ contract.workload.podSelector }}</code></dd>
+      <dt>Stateless-Restart</dt>
+      <dd>
+        <span class="flag" [class.yes]="contract.workload.statelessRestartAllowed">
+          {{ contract.workload.statelessRestartAllowed ? 'erlaubt' : 'nicht erlaubt' }}
+        </span>
+      </dd>
+    </dl>
+  </section>
+
+  <section class="block">
+    <h3>
+      ArgoCD
+      <app-info text="GitOps-Anwendung, über die diese Umgebung ausgerollt wird." />
+    </h3>
+    <dl>
+      <dt>Application</dt>
+      <dd><code>{{ contract.argo.application }}</code></dd>
+      <dt>Namespace</dt>
+      <dd><code>{{ contract.argo.namespace }}</code></dd>
+      @if (contract.argo.publicUrl) {
+        <dt>Link</dt>
+        <dd>
+          <a [href]="contract.argo.publicUrl" target="_blank" rel="noopener">
+            In ArgoCD öffnen
+          </a>
+        </dd>
+      }
+    </dl>
+  </section>
+
+  <section class="block">
+    <h3>
+      Observability
+      <app-info text="Standardisierte Telemetrie-Quellen: Grafana-Dashboards, Prometheus-Metriken und Loki-Logs samt fertiger Beispiel-Queries." />
+    </h3>
+
+    @if (contract.observability.grafanaDashboards.length) {
+      <h4>Grafana-Dashboards</h4>
+      <ul class="links">
+        @for (dashboard of contract.observability.grafanaDashboards; track dashboard.url) {
+          <li>
+            <a [href]="dashboard.url" target="_blank" rel="noopener">{{ dashboard.label }}</a>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (contract.observability.prometheusMetrics.length || contract.observability.prometheusBaseUrl) {
+      <h4>
+        Prometheus
+        @if (contract.observability.prometheusBaseUrl) {
+          <code class="base">{{ contract.observability.prometheusBaseUrl }}</code>
+        }
+      </h4>
+      <div class="metrics">
+        @for (metric of contract.observability.prometheusMetrics; track metric.name) {
+          <div class="metric">
+            <div class="metric-head">
+              <code>{{ metric.name }}</code>
+              <span class="muted">{{ metric.description }}</span>
+            </div>
+            <div class="query">
+              <pre>{{ metric.sampleQuery }}</pre>
+              <button mat-button type="button" class="copy" (click)="copy(metric.sampleQuery, 'm-' + metric.name)">
+                {{ copiedKey === 'm-' + metric.name ? 'Kopiert' : 'Query kopieren' }}
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <h4>
+      Loki
+      @if (contract.observability.lokiBaseUrl) {
+        <code class="base">{{ contract.observability.lokiBaseUrl }}</code>
+      }
+    </h4>
+    <div class="query">
+      <pre>{{ contract.observability.loki.sampleQuery }}</pre>
+      <button mat-button type="button" class="copy" (click)="copy(contract.observability.loki.sampleQuery, 'loki')">
+        {{ copiedKey === 'loki' ? 'Kopiert' : 'Query kopieren' }}
+      </button>
+    </div>
+    <dl class="compact">
+      <dt>Pflichtfelder</dt>
+      <dd>
+        <div class="chips">
+          @for (field of contract.observability.loki.requiredFields; track field) {
+            <span class="chip">{{ field }}</span>
+          }
+        </div>
+      </dd>
+      <dt>Redigierte Felder</dt>
+      <dd>
+        <div class="chips">
+          @for (field of contract.observability.loki.redactedFields; track field) {
+            <span class="chip warn">{{ field }}</span>
+          }
+        </div>
+      </dd>
+    </dl>
+  </section>
+
+  <section class="block">
+    <h3>
+      Smoke-Tests
+      <app-info text="In-Cluster Health-Jobs, die die Kernpfade der App automatisch prüfen." />
+    </h3>
+    <dl>
+      <dt>Kernchecks</dt>
+      <dd>
+        <div class="chips">
+          @for (check of contract.smoke.coreChecks; track check) {
+            <span class="chip">{{ check }}</span>
+          }
+        </div>
+      </dd>
+      <dt>Trigger</dt>
+      <dd>
+        <span class="flag" [class.yes]="contract.smoke.triggerAllowed">
+          {{ contract.smoke.triggerAllowed ? 'erlaubt' : 'nicht erlaubt' }}
+        </span>
+      </dd>
+      <dt>Job-Selector</dt>
+      <dd><code>{{ contract.smoke.jobLabelSelector }}</code></dd>
+    </dl>
+  </section>
+
+  <section class="block">
+    <h3>
+      First-Level-Support
+      <app-info text="Was First Level ohne Konsole, DB-Zugriff oder Falldaten erkennen kann – sowie die Felder, die in ein Eskalationspaket gehören." />
+    </h3>
+    <dl>
+      <dt>Störungsklassen</dt>
+      <dd>
+        <div class="chips">
+          @for (issue of contract.firstLevel.issueClasses; track issue) {
+            <span class="chip">{{ issueClassLabel(issue) }}</span>
+          }
+        </div>
+      </dd>
+      <dt>Evidenzquellen</dt>
+      <dd>
+        <div class="chips">
+          @for (source of contract.firstLevel.evidenceSources; track source) {
+            <span class="chip">{{ signalSourceLabel(source) }}</span>
+          }
+        </div>
+      </dd>
+      <dt>Eskalationsfelder</dt>
+      <dd>
+        <div class="chips">
+          @for (field of contract.firstLevel.escalationFields; track field) {
+            <span class="chip">{{ field }}</span>
+          }
+        </div>
+      </dd>
+    </dl>
+  </section>
+</article>
