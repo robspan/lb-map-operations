@@ -744,7 +744,11 @@ function remedies(
   roles: readonly OpsRole[],
   ...templates: readonly RemedyTemplate[]
 ): readonly SuggestedRemedy[] {
+  const admin = roleAllows(roles, 'admin');
   return templates.flatMap((template) => {
+    if (!admin && template.remedyId === REMEDIES.smokeResult.remedyId) {
+      return [];
+    }
     const enabled = roleAllows(roles, template.requiredRole);
     if (!enabled && template.hideWhenUnauthorized) {
       return [];
@@ -773,7 +777,7 @@ function noObviousFaultRemedies(roles: readonly OpsRole[]): readonly SuggestedRe
     );
   }
 
-  return remedies(roles, REMEDIES.smokeResult, REMEDIES.escalationBundle);
+  return remedies(roles, REMEDIES.escalationBundle);
 }
 
 function argoSyncStatus(facts: DiagnosisFacts): string | undefined {

@@ -74,18 +74,20 @@
           </header>
           <p class="cause"><strong>Mögliche Ursache:</strong> {{ finding.likelyCause }}</p>
 
-          @if (finding.remedies.length) {
+          @if (visibleRemedies(finding).length) {
             <div class="remedies">
-              <h5>Vorgeschlagene Abhilfe</h5>
-              @for (remedy of finding.remedies; track remedy.remedyId) {
+              <h5>{{ remediesHeading() }}</h5>
+              @for (remedy of visibleRemedies(finding); track remedy.remedyId) {
                 <div class="remedy">
                   <div class="remedy-info">
                     <div class="remedy-title">
-                      <strong>{{ remedy.title }}</strong>
-                      <span class="risk risk-{{ remedy.risk }}">Risiko: {{ riskLabel(remedy.risk) }}</span>
+                      <strong>{{ remedyTitle(remedy) }}</strong>
+                      @if (isAdmin()) {
+                        <span class="risk risk-{{ remedy.risk }}">Risiko: {{ riskLabel(remedy.risk) }}</span>
+                      }
                     </div>
-                    <p>{{ remedy.description }}</p>
-                    @if (!remedy.enabled && remedy.disabledReason) {
+                    <p>{{ remedyDescription(remedy) }}</p>
+                    @if (isAdmin() && !remedy.enabled && remedy.disabledReason) {
                       <p class="muted disabled-reason">{{ remedy.disabledReason }}</p>
                     }
                   </div>
@@ -112,7 +114,7 @@
                         [disabled]="!remedy.enabled || !!runningRemedyId"
                         (click)="requestRemedy(remedy)"
                       >
-                        {{ remedy.risk === 'none' ? 'Anzeigen' : 'Ausführen' }}
+                        {{ remedyButtonLabel(remedy) }}
                       </button>
                     }
                   </div>
@@ -120,15 +122,22 @@
 
                 @if (remedyRuns[remedy.remedyId]; as rr) {
                   <div class="remedy-result">
-                    <button class="expander" type="button" (click)="toggleRemedy(remedy.remedyId)">
+                    <button
+                      class="expander"
+                      type="button"
+                      [disabled]="!isAdmin()"
+                      (click)="toggleRemedy(remedy.remedyId)"
+                    >
                       <span class="status-pill status-{{ rr.status }}">{{ runStatusLabel(rr.status) }}</span>
-                      {{ rr.summary }}
-                      <span class="caret">{{ remedyExpanded(remedy.remedyId) ? '▲' : '▼' }}</span>
+                      {{ compactRemedySummary(remedy, rr) }}
+                      @if (isAdmin()) {
+                        <span class="caret">{{ remedyExpanded(remedy.remedyId) ? '▲' : '▼' }}</span>
+                      }
                     </button>
                     @if (rr.message) {
                       <p class="error">{{ rr.message }}</p>
                     }
-                    @if (remedyExpanded(remedy.remedyId) && rr.evidence.length) {
+                    @if (isAdmin() && remedyExpanded(remedy.remedyId) && rr.evidence.length) {
                       <dl class="evidence">
                         @for (item of rr.evidence; track $index) {
                           <dt>{{ item.label }}</dt>

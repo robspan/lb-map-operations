@@ -163,6 +163,9 @@ export class DiagnosePanel implements OnDestroy {
   }
 
   toggleRemedy(remedyId: string): void {
+    if (!this.isAdmin()) {
+      return;
+    }
     if (this.expandedRemedies.has(remedyId)) {
       this.expandedRemedies.delete(remedyId);
     } else {
@@ -213,6 +216,65 @@ export class DiagnosePanel implements OnDestroy {
     return status;
   }
 
+  isAdmin(): boolean {
+    return this.roles.includes('admin');
+  }
+
+  visibleRemedies(finding: DiagnosisFinding): readonly SuggestedRemedy[] {
+    if (this.isAdmin()) {
+      return finding.remedies;
+    }
+    return finding.remedies.filter(
+      (remedy) =>
+        remedy.enabled &&
+        (remedy.actionId === 'escalation-bundle' || remedy.risk !== 'none')
+    );
+  }
+
+  remediesHeading(): string {
+    return this.isAdmin() ? 'Vorgeschlagene Abhilfe' : 'Nächster Schritt';
+  }
+
+  remedyTitle(remedy: SuggestedRemedy): string {
+    if (this.isAdmin()) {
+      return remedy.title;
+    }
+    if (remedy.actionId === 'escalation-bundle') {
+      return 'Eskalieren';
+    }
+    return 'Autofix';
+  }
+
+  remedyDescription(remedy: SuggestedRemedy): string {
+    if (this.isAdmin()) {
+      return remedy.description;
+    }
+    if (remedy.actionId === 'escalation-bundle') {
+      return 'An interne IT übergeben, wenn die Diagnose keine direkte Lösung bringt.';
+    }
+    return 'Sichere automatische Abhilfe ausführen und danach erneut scannen.';
+  }
+
+  remedyButtonLabel(remedy: SuggestedRemedy): string {
+    if (!this.isAdmin()) {
+      return remedy.actionId === 'escalation-bundle' ? 'Eskalieren' : 'Autofix';
+    }
+    return remedy.risk === 'none' ? 'Anzeigen' : 'Ausführen';
+  }
+
+  compactRemedySummary(remedy: SuggestedRemedy, run: ActionRunResult): string {
+    if (this.isAdmin()) {
+      return run.summary;
+    }
+    if (run.status === 'failed') {
+      return 'Hat nicht funktioniert. Bitte eskalieren.';
+    }
+    if (remedy.actionId === 'escalation-bundle') {
+      return 'Eskalation vorbereitet.';
+    }
+    return 'Abhilfe ausgeführt. Danach Diagnose erneut starten.';
+  }
+
   worstSeverity(run: ActionRunResult): DiagnosisSeverity {
     const findings = run.diagnosis?.findings ?? [];
     return findings.reduce<DiagnosisSeverity>(
@@ -256,7 +318,9 @@ export class DiagnosePanel implements OnDestroy {
       .subscribe({
         next: ({ run }) => {
           this.remedyRuns[remedy.remedyId] = run;
-          this.expandedRemedies.add(remedy.remedyId);
+          if (this.isAdmin()) {
+            this.expandedRemedies.add(remedy.remedyId);
+          }
           this.changeDetector.detectChanges();
         },
         error: () => {

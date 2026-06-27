@@ -54,11 +54,11 @@ describe('DiagnosePanel', () => {
     }).compileComponents();
   });
 
-  function create(selectedRun?: unknown) {
+  function create(selectedRun?: unknown, roles: readonly string[] = ['admin']) {
     const fixture = TestBed.createComponent(DiagnosePanel);
     fixture.componentRef.setInput('app', 'varlens');
     fixture.componentRef.setInput('environment', 'test');
-    fixture.componentRef.setInput('roles', ['admin']);
+    fixture.componentRef.setInput('roles', roles);
     if (selectedRun) {
       // Set before first change detection so the rendered state is stable.
       (fixture.componentInstance as unknown as { selectedRun: unknown }).selectedRun = selectedRun;
@@ -151,6 +151,66 @@ describe('DiagnosePanel', () => {
     fixture.detectChanges();
 
     expect(compiled.querySelector('.remedy-result')?.textContent).toContain('2 Pods gefunden.');
+    http.verify();
+  });
+
+  it('shows compact first-level remedy results without technical evidence', async () => {
+    const run = runWithFinding();
+    run.diagnosis.findings[0].remedies = [
+      {
+        remedyId: 'read-smoke-result',
+        title: 'Smoke-Status anzeigen',
+        description: 'Zeigt Smoke-Jobs.',
+        actionId: 'smoke-result',
+        requiredRole: 'first-level',
+        risk: 'none',
+        enabled: true,
+      },
+      {
+        remedyId: 'create-escalation-bundle',
+        title: 'Eskalationspaket erstellen',
+        description: 'Bündelt Details.',
+        actionId: 'escalation-bundle',
+        requiredRole: 'first-level',
+        risk: 'none',
+        enabled: true,
+      },
+    ];
+    const fixture = create(run, ['first-level']);
+    const http = TestBed.inject(HttpTestingController);
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).not.toContain('Smoke-Status anzeigen');
+    expect(compiled.textContent).not.toContain('Risiko:');
+    expect(compiled.textContent).toContain('Eskalieren');
+
+    (compiled.querySelector('[data-testid="remedy-run"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    http.expectOne('/api/actions/escalation-bundle/runs').flush({
+      run: {
+        runId: 'r10',
+        actionId: 'escalation-bundle',
+        status: 'succeeded',
+        startedAt: new Date().toISOString(),
+        targetApp: 'varlens',
+        targetEnvironment: 'test',
+        actor: 'support',
+        role: 'first-level',
+        summary: 'Eskalationspaket für varlens/test zusammengestellt.',
+        evidence: [
+          { label: 'ArgoCD Sync', value: 'Synced' },
+          { label: 'Prometheus-Signale', value: 4 },
+        ],
+      },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const resultText = compiled.querySelector('.remedy-result')?.textContent || '';
+    expect(resultText).toContain('Eskalation vorbereitet.');
+    expect(resultText).not.toContain('ArgoCD Sync');
+    expect(resultText).not.toContain('Prometheus-Signale');
     http.verify();
   });
 });

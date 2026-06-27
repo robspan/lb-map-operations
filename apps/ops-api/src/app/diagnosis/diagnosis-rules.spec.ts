@@ -96,7 +96,6 @@ describe('diagnosis rules', () => {
     expect(
       report.findings[0].remedies.map((remedy) => remedy.actionId),
     ).toEqual([
-      'smoke-result',
       'escalation-bundle',
     ]);
     expect(
