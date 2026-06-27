@@ -3,11 +3,13 @@
   <span class="spacer"></span>
   @if (actor) {
     <span class="actor">{{ actor }}</span>
-    <mat-chip-set aria-label="Rollen">
-      @for (role of roles; track role) {
-        <mat-chip class="role-chip">{{ roleLabel(role) }}</mat-chip>
-      }
-    </mat-chip-set>
+    @if (visibleRoles().length) {
+      <mat-chip-set aria-label="Rollen">
+        @for (role of visibleRoles(); track role) {
+          <mat-chip class="role-chip">{{ roleLabel(role) }}</mat-chip>
+        }
+      </mat-chip-set>
+    }
     <button mat-button type="button" (click)="logout()">Abmelden</button>
   }
 </mat-toolbar>

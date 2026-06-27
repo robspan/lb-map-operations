@@ -98,6 +98,8 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(fixture.componentInstance.activeView).toBe('diagnose');
     expect(compiled.querySelector('[data-testid="side-nav"]')).toBeNull();
+    expect(compiled.querySelector('.role-chip')).toBeNull();
+    expect(compiled.textContent).not.toContain('First Level');
     expect(compiled.textContent).not.toContain('Operationen');
     expect(compiled.querySelector('[data-testid="action-card"]')).toBeNull();
   });

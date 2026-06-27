@@ -90,6 +90,41 @@ describe('DiagnosePanel', () => {
     expect(compiled.querySelector('.evidence')?.textContent).toContain('OutOfSync');
   });
 
+  it('does not show unconfigured diagnosis checks', () => {
+    const fixture = TestBed.createComponent(DiagnosePanel);
+    fixture.componentRef.setInput('app', 'varlens');
+    fixture.componentRef.setInput('environment', 'test');
+    fixture.componentRef.setInput('roles', ['admin']);
+    const component = fixture.componentInstance as unknown as {
+      stepsExpanded: boolean;
+      upsertStep: (step: {
+        stepId: string;
+        label: string;
+        status: 'running' | 'succeeded' | 'failed' | 'skipped';
+        detail?: string;
+      }) => void;
+    };
+
+    component.upsertStep({
+      stepId: 'public-health',
+      label: 'Nutzer-Erreichbarkeit prüfen',
+      status: 'skipped',
+      detail: 'Keine öffentliche Health-URL konfiguriert.',
+    });
+    component.upsertStep({
+      stepId: 'prometheus',
+      label: 'Betriebssignale prüfen',
+      status: 'running',
+    });
+    component.stepsExpanded = true;
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).not.toContain('Nutzer-Erreichbarkeit prüfen');
+    expect(compiled.textContent).not.toContain('Keine öffentliche Health-URL');
+    expect(compiled.textContent).toContain('Betriebssignale prüfen');
+  });
+
   it('applies a read-only remedy and shows its result', async () => {
     const fixture = create(runWithFinding());
     const http = TestBed.inject(HttpTestingController);

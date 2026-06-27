@@ -78,7 +78,9 @@ type Captured<T> = {
   readonly error?: string;
 };
 
-type DiagnosisProgress = (step: DiagnosisStepEvent) => void;
+type DiagnosisProgress = (step: DiagnosisStepEvent) => Promise<void> | void;
+
+const DIAGNOSIS_STEP_SPREAD_MS = 300;
 
 @Injectable()
 export class ActionRunnerService {
@@ -255,12 +257,16 @@ export class ActionRunnerService {
     });
 
     try {
+      const diagnosisProgress = staggerDiagnosisProgress((step) =>
+        emit({ type: 'step', runId, step }),
+        configuredDiagnosisStepCount(contract),
+      );
       const output = await this.diagnoseTarget(
         target,
         contract,
         inputs,
         principal,
-        (step) => emit({ type: 'step', runId, step }),
+        diagnosisProgress,
       );
       const finishedAt = new Date();
       const durationMs = finishedAt.getTime() - startedAt.getTime();
@@ -424,7 +430,7 @@ export class ActionRunnerService {
     const publicHealthUrl = contract.endpoints.publicHealthUrl;
     const freshSmoke = await captureDiagnosisStep(
       'smoke-run',
-      'Smoke-Job ausführen',
+      'Automatischen Funktionstest ausführen',
       () => this.runFreshSmoke(target, contract, principal.user),
       progress,
     );
@@ -441,44 +447,44 @@ export class ActionRunnerService {
     ] = await Promise.all([
       captureDiagnosisStep(
         'deployment',
-        'Deployment lesen',
+        'App-Startzustand prüfen',
         () => this.kubernetes.deployment(target),
         progress,
       ),
       captureDiagnosisStep(
         'pods',
-        'Pods lesen',
+        'Laufende App-Instanzen prüfen',
         () => this.kubernetes.pods(target),
         progress,
       ),
       captureDiagnosisStep(
         'argocd',
-        'ArgoCD Status lesen',
+        'Ausgerollten Stand prüfen',
         () => this.argo.application(target),
         progress,
       ),
       captureDiagnosisStep(
         'smoke-jobs',
-        'Smoke-Jobs lesen',
+        'Letzte Funktionstests prüfen',
         () => this.kubernetes.jobs(target),
         progress,
       ),
       captureDiagnosisStep(
         'liveness',
-        'Liveness prüfen',
+        'App-Prozess intern prüfen',
         () => this.checkUrl(contract.endpoints.livenessUrl, timeoutMs),
         progress,
       ),
       captureDiagnosisStep(
         'readiness',
-        'Readiness prüfen',
+        'App-Bereitschaft intern prüfen',
         () => this.checkUrl(contract.endpoints.readinessUrl, timeoutMs),
         progress,
       ),
       publicHealthUrl
         ? captureDiagnosisStep(
             'public-health',
-            'Öffentlichen Endpunkt prüfen',
+            'Nutzer-Erreichbarkeit prüfen',
             () => this.checkUrl(publicHealthUrl, timeoutMs),
             progress,
           )
@@ -491,7 +497,7 @@ export class ActionRunnerService {
       contract.observability.prometheusBaseUrl
         ? captureDiagnosisStep(
             'prometheus',
-            'Prometheus-Signale lesen',
+            'Betriebssignale prüfen',
             () => this.prometheus.contractMetrics(contract, timeoutMs),
             progress,
           )
@@ -504,7 +510,7 @@ export class ActionRunnerService {
       contract.observability.lokiBaseUrl
         ? captureDiagnosisStep(
             'loki',
-            'Log-Summary lesen',
+            'Fehlerhinweise prüfen',
             () => this.loki.logSummary(contract, timeoutMs),
             progress,
           )
@@ -1069,9 +1075,9 @@ async function captureDiagnosisStep<T>(
   load: () => Promise<T>,
   progress?: DiagnosisProgress,
 ): Promise<Captured<T>> {
-  progress?.({ stepId, label, status: 'running' });
+  await progress?.({ stepId, label, status: 'running' });
   const result = await capture(load);
-  progress?.({
+  await progress?.({
     stepId,
     label,
     status: result.error ? 'failed' : 'succeeded',
@@ -1086,8 +1092,45 @@ function skipDiagnosisStep<T>(
   detail: string,
   progress?: DiagnosisProgress,
 ): Promise<Captured<T>> {
-  progress?.({ stepId, label, status: 'skipped', detail });
+  void stepId;
+  void label;
+  void detail;
+  void progress;
   return Promise.resolve({});
+}
+
+function configuredDiagnosisStepCount(contract: AppOperationsContract): number {
+  const alwaysConfigured = 7;
+  return (
+    alwaysConfigured +
+    (contract.endpoints.publicHealthUrl ? 1 : 0) +
+    (contract.observability.prometheusBaseUrl ? 1 : 0) +
+    (contract.observability.lokiBaseUrl ? 1 : 0)
+  );
+}
+
+function staggerDiagnosisProgress(
+  emit: (step: DiagnosisStepEvent) => void,
+  totalSteps: number,
+): DiagnosisProgress {
+  const startedAt = Date.now();
+  let completedSteps = 0;
+  return async (step) => {
+    if (step.status === 'running') {
+      emit(step);
+      return;
+    }
+
+    completedSteps += 1;
+    const targetOffsetMs = Math.round(
+      (completedSteps / Math.max(totalSteps, 1)) * DIAGNOSIS_STEP_SPREAD_MS,
+    );
+    const waitMs = Math.max(0, startedAt + targetOffsetMs - Date.now());
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+    emit(step);
+  };
 }
 
 function collectionError<T>(

@@ -232,6 +232,10 @@ export class App implements OnInit {
     return this.roles.includes('admin');
   }
 
+  visibleRoles(): readonly OpsRole[] {
+    return this.roles.filter((role) => role !== 'first-level');
+  }
+
   loadUsers(): void {
     this.userError = '';
     this.api.users().subscribe({

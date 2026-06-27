@@ -267,6 +267,9 @@ export class DiagnosePanel implements OnDestroy {
   }
 
   private upsertStep(step: DiagnosisStepEvent): void {
+    if (step.status === 'skipped') {
+      return;
+    }
     const index = this.steps.findIndex((existing) => existing.stepId === step.stepId);
     if (index === -1) {
       this.steps = [...this.steps, step];
