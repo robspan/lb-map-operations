@@ -44,9 +44,6 @@ export class OpsConfigService {
   readonly firstLevelGroups = splitCsv(
     process.env.OPS_FIRST_LEVEL_GROUPS || 'lb-map-first-level',
   );
-  readonly operatorGroups = splitCsv(
-    process.env.OPS_OPERATOR_GROUPS || 'lb-map-operator',
-  );
   readonly adminGroups = splitCsv(
     process.env.OPS_ADMIN_GROUPS || 'lb-map-admin',
   );

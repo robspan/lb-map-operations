@@ -27,13 +27,13 @@ describe('diagnosis rules', () => {
 
     expect(finding?.severity).toBe('warning');
     expect(remedy).toMatchObject({
-      requiredRole: 'operator',
+      requiredRole: 'admin',
       enabled: false,
-      disabledReason: 'Benötigt Rolle operator.',
+      disabledReason: 'Benötigt Rolle admin.',
     });
   });
 
-  it('enables the same Argo remedy for operators', () => {
+  it('enables the same Argo remedy for admins', () => {
     const report = buildDiagnosisReport(
       contract(),
       {
@@ -45,7 +45,7 @@ describe('diagnosis rules', () => {
           },
         },
       },
-      ['operator'],
+      ['admin'],
       '2026-06-27T10:00:00.000Z',
     );
 

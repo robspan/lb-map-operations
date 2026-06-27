@@ -32,59 +32,10 @@ const mutation = {
   id: 'rollout-restart',
   title: 'Stateless Restart',
   description: 'Deployment neu starten.',
-  role: 'operator',
+  role: 'admin',
   kind: 'mutation',
   targetApp: 'varlens',
   inputs: [],
-};
-
-const contract = {
-  app: 'varlens',
-  environment: 'test',
-  endpoints: {
-    livenessPath: '/livez',
-    readinessPath: '/readyz',
-    healthPath: '/healthz',
-    internalBaseUrl: 'http://varlens.varlens-test.svc.cluster.local',
-    livenessUrl: 'http://varlens.varlens-test.svc.cluster.local/livez',
-    readinessUrl: 'http://varlens.varlens-test.svc.cluster.local/readyz',
-    healthUrl: 'http://varlens.varlens-test.svc.cluster.local/healthz',
-  },
-  workload: {
-    namespace: 'varlens-test',
-    deployment: 'varlens',
-    serviceName: 'varlens',
-    podSelector: 'app.kubernetes.io/instance=varlens',
-    statelessRestartAllowed: true,
-  },
-  argo: { application: 'varlens-test', namespace: 'argocd-dev-test' },
-  observability: {
-    prometheusMetrics: [
-      {
-        name: 'http_requests_total',
-        description: 'Requests',
-        requiredLabels: ['app'],
-        sampleQuery: 'sum(http_requests_total)',
-      },
-    ],
-    loki: {
-      selector: '{namespace="varlens-test"}',
-      requiredFields: ['request_id'],
-      redactedFields: ['token'],
-      sampleQuery: '{namespace="varlens-test"} | json',
-    },
-    grafanaDashboards: [{ label: 'VarLens test', url: 'http://grafana.example/d/varlens' }],
-  },
-  smoke: {
-    jobLabelSelector: 'app.kubernetes.io/name=varlens',
-    triggerAllowed: true,
-    coreChecks: ['health-contract'],
-  },
-  firstLevel: {
-    issueClasses: ['app-unreachable'],
-    evidenceSources: ['http', 'prometheus'],
-    escalationFields: ['request_id', 'failure_class'],
-  },
 };
 
 describe('App', () => {
@@ -99,8 +50,7 @@ describe('App', () => {
   function bootstrap(
     principal: unknown,
     actions: unknown[],
-    contracts: unknown[] = [contract],
-    view: 'diagnose' | 'operations' | 'contract' | 'users' | 'audit' = 'operations'
+    view: 'diagnose' | 'operations' | 'users' | 'audit' = 'operations'
   ) {
     const fixture = TestBed.createComponent(App);
     // Set the active tab before the first change detection to keep the rendered state stable.
@@ -109,7 +59,6 @@ describe('App', () => {
     const http = TestBed.inject(HttpTestingController);
     http.expectOne('/api/me').flush({ principal });
     http.expectOne('/api/actions').flush({ actions });
-    http.expectOne('/api/contracts').flush({ contracts });
     return { fixture, http };
   }
 
@@ -125,7 +74,6 @@ describe('App', () => {
     const { fixture } = bootstrap(
       { user: 'support', groups: [], roles: ['first-level'] },
       [diagnostic],
-      [contract],
       'diagnose'
     );
     await fixture.whenStable();
@@ -140,7 +88,7 @@ describe('App', () => {
     expect(fixture.componentInstance.activeView).toBe('diagnose');
   });
 
-  it('should render only the actions the API returns', async () => {
+  it('forces first-level users back to the diagnose tab', async () => {
     const { fixture } = bootstrap(
       { user: 'support', groups: [], roles: ['first-level'] },
       [diagnostic]
@@ -148,13 +96,14 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('[data-testid="action-card"]')).toHaveLength(1);
-    expect(compiled.textContent).toContain('Endpoint prüfen');
+    expect(fixture.componentInstance.activeView).toBe('diagnose');
+    expect(compiled.textContent).not.toContain('Operationen');
+    expect(compiled.querySelector('[data-testid="action-card"]')).toBeNull();
   });
 
   it('renders URL evidence as a link and long evidence as a log block', async () => {
     const { fixture, http } = bootstrap(
-      { user: 'support', groups: [], roles: ['first-level'] },
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnostic]
     );
     await fixture.whenStable();
@@ -172,8 +121,8 @@ describe('App', () => {
         startedAt: new Date().toISOString(),
         targetApp: 'varlens',
         targetEnvironment: 'test',
-        actor: 'support',
-        role: 'first-level',
+        actor: 'ops-admin',
+        role: 'admin',
         summary: 'ok',
         evidence: [
           { label: 'Grafana', value: 'https://grafana.example/d/x' },
@@ -189,54 +138,23 @@ describe('App', () => {
     expect(compiled.querySelector('.evidence-log')?.textContent).toContain('kkk');
   });
 
-  it('should hide the config wheel in easy mode', async () => {
+  it('shows action configuration controls for admins without an expert toggle', async () => {
     const { fixture } = bootstrap(
-      { user: 'support', groups: [], roles: ['first-level'] },
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnosticWithConfig]
     );
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(fixture.componentInstance.expertMode).toBe(false);
-    expect(compiled.querySelector('[data-testid="config-button"]')).toBeNull();
-  });
-
-  it('should show the config wheel in expert mode', async () => {
-    localStorage.setItem('ops.expertMode', '1');
-    const { fixture } = bootstrap(
-      { user: 'support', groups: [], roles: ['first-level'] },
-      [diagnosticWithConfig]
-    );
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(fixture.componentInstance.expertMode).toBe(true);
     expect(compiled.querySelector('[data-testid="config-button"]')).toBeTruthy();
-  });
-
-  it('should render the standardized contract in the Standard-Setup view', async () => {
-    const { fixture } = bootstrap(
-      { user: 'support', groups: [], roles: ['first-level'] },
-      [diagnostic],
-      [contract],
-      'contract'
-    );
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const panel = compiled.querySelector('[data-testid="contract-panel"]');
-    expect(panel).toBeTruthy();
-    expect(panel?.textContent).toContain('varlens-test');
-    expect(panel?.textContent).toContain('http_requests_total');
-    expect(panel?.textContent).toContain('App nicht erreichbar');
+    expect(compiled.querySelector('[data-testid="expert-toggle"]')).toBeNull();
+    expect(compiled.textContent).not.toContain('Standard-Setup');
   });
 
   it('renders the DB-backed user administration table for admins', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnostic],
-      [contract],
       'users'
     );
     http.expectOne('/api/auth/users').flush({
@@ -265,7 +183,6 @@ describe('App', () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnostic],
-      [contract],
       'audit'
     );
     http.expectOne('/api/audit/events?limit=100').flush({
@@ -292,7 +209,7 @@ describe('App', () => {
 
   it('should not run a mutation until it is confirmed', async () => {
     const { fixture, http } = bootstrap(
-      { user: 'op', groups: [], roles: ['operator'] },
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
       [mutation]
     );
     await fixture.whenStable();
@@ -320,8 +237,8 @@ describe('App', () => {
           startedAt: new Date().toISOString(),
           targetApp: 'varlens',
           targetEnvironment: 'test',
-          actor: 'op',
-          role: 'operator',
+          actor: 'ops-admin',
+          role: 'admin',
           summary: 'Neustart angewendet.',
           evidence: [],
         },

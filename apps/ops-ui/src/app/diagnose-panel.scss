@@ -377,8 +377,15 @@ $info: #1565c0;
   background: #eef4fb;
 }
 
-.history-count {
+.history-target {
   flex: 1 1 auto;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: $ink;
+}
+
+.history-count {
+  flex: 0 0 auto;
   font-size: 0.88rem;
   color: $ink;
 }

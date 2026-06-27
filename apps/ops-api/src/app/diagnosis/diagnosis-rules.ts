@@ -82,7 +82,16 @@ const REMEDIES = {
     title: 'ArgoCD Sync ausführen',
     description: 'Wendet den GitOps-Sollzustand erneut ohne Prune an.',
     actionId: 'argo-sync',
-    requiredRole: 'operator',
+    requiredRole: 'admin',
+    risk: 'low',
+  },
+  rolloutRestart: {
+    remedyId: 'rollout-restart-stateless',
+    title: 'Stateless Restart ausführen',
+    description:
+      'Startet das App-Deployment rollierend neu, ohne Pods zu löschen oder Daten zu verändern.',
+    actionId: 'rollout-restart',
+    requiredRole: 'admin',
     risk: 'low',
   },
   argoStatus: {
@@ -304,6 +313,7 @@ function addEndpointFindings(
       evidence: endpointEvidence('Liveness', liveness),
       remedies: remedies(
         roles,
+        REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
@@ -323,6 +333,7 @@ function addEndpointFindings(
       evidence: endpointEvidence('Readiness', readiness),
       remedies: remedies(
         roles,
+        REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
         REMEDIES.observabilityLinks,
@@ -379,6 +390,7 @@ function addWorkloadFindings(
         ],
         remedies: remedies(
           roles,
+          REMEDIES.rolloutRestart,
           REMEDIES.podSummary,
           REMEDIES.logSummary,
           REMEDIES.escalationBundle,
@@ -398,6 +410,7 @@ function addWorkloadFindings(
         ],
         remedies: remedies(
           roles,
+          REMEDIES.rolloutRestart,
           REMEDIES.podSummary,
           REMEDIES.logSummary,
           REMEDIES.escalationBundle,
@@ -447,6 +460,7 @@ function addWorkloadFindings(
       })),
       remedies: remedies(
         roles,
+        REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
@@ -466,6 +480,7 @@ function addWorkloadFindings(
       evidence: [{ label: 'Container-Neustarts gesamt', value: restarts }],
       remedies: remedies(
         roles,
+        REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
@@ -513,6 +528,7 @@ function addSmokeFindings(
       remedies: remedies(
         roles,
         REMEDIES.smokeResult,
+        REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
       ),
@@ -561,6 +577,7 @@ function addDependencyMetricFindings(
       remedies: remedies(
         roles,
         REMEDIES.observabilityLinks,
+        REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
       ),
@@ -596,6 +613,7 @@ function addHttpMetricFindings(
         remedies: remedies(
           roles,
           REMEDIES.observabilityLinks,
+          REMEDIES.rolloutRestart,
           REMEDIES.logSummary,
           REMEDIES.escalationBundle,
         ),
@@ -625,6 +643,7 @@ function addHttpMetricFindings(
         remedies: remedies(
           roles,
           REMEDIES.observabilityLinks,
+          REMEDIES.rolloutRestart,
           REMEDIES.logSummary,
           REMEDIES.escalationBundle,
         ),
@@ -674,6 +693,7 @@ function addOperationMetricFindings(
       remedies: remedies(
         roles,
         REMEDIES.observabilityLinks,
+        REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
         REMEDIES.escalationBundle,
       ),
@@ -714,6 +734,7 @@ function addLogFindings(
       roles,
       REMEDIES.logSummary,
       REMEDIES.observabilityLinks,
+      REMEDIES.rolloutRestart,
       REMEDIES.escalationBundle,
     ),
   });

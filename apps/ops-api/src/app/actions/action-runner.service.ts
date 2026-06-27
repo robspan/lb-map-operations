@@ -360,21 +360,6 @@ export class ActionRunnerService {
           summary: `Neustart-Annotation auf ${target.deployment} in ${target.namespace} angewendet.`,
           evidence: [{ label: 'Deployment', value: target.deployment }],
         };
-      case 'smoke-trigger': {
-        if (!contract.smoke.triggerAllowed) {
-          throw new BadRequestException(
-            'Smoke-Auslösung ist laut App-Vertrag nicht erlaubt.',
-          );
-        }
-        const jobName = await this.kubernetes.createSmokeJob(
-          target,
-          principal.user,
-        );
-        return {
-          summary: `Smoke-Job ${jobName} erstellt.`,
-          evidence: [{ label: 'Job', value: jobName }],
-        };
-      }
       default:
         throw new BadRequestException(`action is not implemented: ${actionId}`);
     }

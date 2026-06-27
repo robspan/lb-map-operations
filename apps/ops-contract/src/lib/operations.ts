@@ -1,4 +1,4 @@
-export type OpsRole = 'first-level' | 'operator' | 'admin';
+export type OpsRole = 'first-level' | 'admin';
 
 export type ActionKind = 'diagnostic' | 'mutation';
 
@@ -253,7 +253,6 @@ export type DiagnosisStreamEvent =
 
 export const OPS_ROLE_ORDER: readonly OpsRole[] = [
   'first-level',
-  'operator',
   'admin',
 ];
 

@@ -70,13 +70,32 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         display_name TEXT NOT NULL,
         email TEXT,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('first-level', 'operator', 'admin')),
+        role TEXT NOT NULL CHECK (role IN ('first-level', 'admin')),
         active BOOLEAN NOT NULL DEFAULT TRUE,
         must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         password_changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
+    `);
+    await pool.query(`UPDATE ops_users SET role = 'admin' WHERE role = 'operator'`);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conrelid = 'ops_users'::regclass
+            AND conname = 'ops_users_role_check'
+        ) THEN
+          ALTER TABLE ops_users DROP CONSTRAINT ops_users_role_check;
+        END IF;
+      END $$;
+    `);
+    await pool.query(`
+      ALTER TABLE ops_users
+      ADD CONSTRAINT ops_users_role_check
+      CHECK (role IN ('first-level', 'admin'))
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ops_sessions (

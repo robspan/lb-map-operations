@@ -200,6 +200,7 @@
                 role="img"
                 [attr.aria-label]="'Schwere: ' + severityLabel(worstSeverity(run))"
               ></span>
+              <span class="history-target">{{ run.targetApp }}/{{ run.targetEnvironment }}</span>
               <span class="history-count">{{ run.diagnosis?.findings?.length || 0 }} Befund(e)</span>
               <span class="muted">{{ run.finishedAt || run.startedAt | date: 'HH:mm:ss' }}</span>
             </button>

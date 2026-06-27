@@ -159,7 +159,7 @@ export class AuthController {
 }
 
 function parseRole(role: unknown): OpsRole {
-  if (role === 'first-level' || role === 'operator' || role === 'admin') {
+  if (role === 'first-level' || role === 'admin') {
     return role;
   }
   throw new BadRequestException('invalid role');

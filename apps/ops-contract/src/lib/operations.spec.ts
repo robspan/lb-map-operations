@@ -7,9 +7,9 @@ import {
 describe('operations contract', () => {
   it('treats roles as a one-way support hierarchy', () => {
     expect(roleAllows(['first-level'], 'first-level')).toBe(true);
-    expect(roleAllows(['first-level'], 'operator')).toBe(false);
-    expect(roleAllows(['operator'], 'first-level')).toBe(true);
-    expect(roleAllows(['admin'], 'operator')).toBe(true);
+    expect(roleAllows(['first-level'], 'admin')).toBe(false);
+    expect(roleAllows(['admin'], 'first-level')).toBe(true);
+    expect(roleAllows(['admin'], 'admin')).toBe(true);
   });
 
   it('accepts a complete app operations interface', () => {

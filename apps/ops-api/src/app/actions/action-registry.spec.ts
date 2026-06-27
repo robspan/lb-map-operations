@@ -15,11 +15,10 @@ describe('action registry', () => {
       'escalation-bundle',
       'argo-sync',
       'rollout-restart',
-      'smoke-trigger',
     ]);
   });
 
-  it('hides operator actions from first-level support', () => {
+  it('hides admin actions from first-level support', () => {
     const firstLevelActions = visibleActions(['first-level']).map(
       (action) => action.id,
     );

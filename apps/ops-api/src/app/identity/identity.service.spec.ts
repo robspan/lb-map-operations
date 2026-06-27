@@ -23,26 +23,26 @@ describe('IdentityService', () => {
       headers: {
         'x-forwarded-user': 'support@example.org',
         'x-forwarded-email': 'support@example.org',
-        'x-forwarded-groups': 'lb-map-first-level,lb-map-operator',
+        'x-forwarded-groups': 'lb-map-first-level,lb-map-admin',
       },
     } as unknown as Request);
 
-    expect(principal.roles).toEqual(['first-level', 'operator']);
+    expect(principal.roles).toEqual(['first-level', 'admin']);
   });
 
   it('uses a valid DB-backed session principal first', async () => {
     auth.principalForSessionToken.mockResolvedValue({
-      user: 'operator',
-      groups: ['lb-map-operator'],
-      roles: ['operator'],
+      user: 'admin',
+      groups: ['lb-map-admin'],
+      roles: ['admin'],
     });
 
     const principal = await service.principalFromRequest({
       headers: { cookie: 'lb-map-ops.sid=session-token' },
     } as unknown as Request);
 
-    expect(principal.user).toBe('operator');
-    expect(principal.roles).toEqual(['operator']);
+    expect(principal.user).toBe('admin');
+    expect(principal.roles).toEqual(['admin']);
   });
 
   it('fails closed in production when session cookie is missing', async () => {

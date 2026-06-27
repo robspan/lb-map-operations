@@ -69,9 +69,8 @@
       data-testid="view-switch"
     >
         <mat-button-toggle value="diagnose">Diagnose</mat-button-toggle>
-        <mat-button-toggle value="operations">Operationen</mat-button-toggle>
-        <mat-button-toggle value="contract">Standard-Setup</mat-button-toggle>
         @if (isAdmin()) {
+          <mat-button-toggle value="operations">Operationen</mat-button-toggle>
           <mat-button-toggle value="users">Benutzer</mat-button-toggle>
           <mat-button-toggle value="audit">Audit</mat-button-toggle>
         }
@@ -80,19 +79,6 @@
   </div>
 
   <span class="spacer"></span>
-  @if (activeView === 'operations') {
-    <div class="field">
-      <mat-slide-toggle
-        class="expert-toggle"
-        [checked]="expertMode"
-        (change)="setExpertMode($event.checked)"
-        data-testid="expert-toggle"
-      >
-        Expertenmodus
-      </mat-slide-toggle>
-      <app-info [text]="uiHelp.expert" />
-    </div>
-  }
   <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">
     Aktualisieren
   </button>
@@ -143,7 +129,6 @@
         <mat-label>Rolle</mat-label>
         <mat-select [(ngModel)]="newUser.role" name="newRole">
           <mat-option value="first-level">First Level</mat-option>
-          <mat-option value="operator">Operator</mat-option>
           <mat-option value="admin">Admin</mat-option>
         </mat-select>
       </mat-form-field>
@@ -262,19 +247,7 @@
   </main>
 }
 
-@if (loaded && !loadError && activeView === 'contract') {
-  <main class="contract-view">
-    @if (currentContract) {
-      <app-contract-panel [contract]="currentContract" />
-    } @else {
-      <p class="muted empty">
-        Kein Operations-Vertrag für {{ selectedApp }}/{{ selectedEnvironment }} gefunden.
-      </p>
-    }
-  </main>
-}
-
-@if (loaded && !loadError && activeView === 'operations') {
+@if (loaded && !loadError && activeView === 'operations' && isAdmin()) {
   <main class="shell">
     <div class="actions" aria-label="Operationen">
       <section class="group">
@@ -290,7 +263,7 @@
               <p>{{ action.description }}</p>
             </div>
             <app-info [text]="helpFor(action)" />
-            @if (expertMode && hasConfig(action)) {
+            @if (hasConfig(action)) {
               <button
                 class="config-button"
                 mat-icon-button

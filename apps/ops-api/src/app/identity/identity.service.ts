@@ -58,9 +58,6 @@ export class IdentityService {
     if (roleAllows(principal.roles, 'admin')) {
       return 'admin';
     }
-    if (roleAllows(principal.roles, 'operator')) {
-      return 'operator';
-    }
     return 'first-level';
   }
 
@@ -68,9 +65,6 @@ export class IdentityService {
     const roles: OpsRole[] = [];
     if (intersects(groups, this.config.firstLevelGroups)) {
       roles.push('first-level');
-    }
-    if (intersects(groups, this.config.operatorGroups)) {
-      roles.push('operator');
     }
     if (intersects(groups, this.config.adminGroups)) {
       roles.push('admin');

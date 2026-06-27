@@ -9,13 +9,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import {
   ActionEvidence,
   ActionRunResult,
   ActionStatus,
-  AppOperationsContract,
   OperationAction,
   OpsRole,
   TargetApp,
@@ -23,19 +21,15 @@ import {
 } from '@lb-map-operations/ops-contract';
 import { finalize, forkJoin } from 'rxjs';
 import { ActionConfigDialog, ActionConfigData } from './action-config-dialog';
-import { ContractPanel } from './contract-panel';
 import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
 import { OpsApiService, OpsAuditEvent, OpsUserSummary } from './ops-api.service';
 
-type OpsView = 'diagnose' | 'operations' | 'contract' | 'users' | 'audit';
-
-const EXPERT_MODE_KEY = 'ops.expertMode';
+type OpsView = 'diagnose' | 'operations' | 'users' | 'audit';
 
 /** German role labels for the toolbar chips. */
 const ROLE_LABELS: Record<OpsRole, string> = {
   'first-level': 'First Level',
-  operator: 'Operator',
   admin: 'Admin',
 };
 
@@ -61,8 +55,6 @@ const ACTION_HELP: Record<string, string> = {
     'Löst einen ArgoCD-Sync ohne Prune aus, um den Soll-Zustand aus Git erneut anzuwenden. Eingriff – verändert die Live-Umgebung.',
   'rollout-restart':
     'Startet das Deployment rollierend über eine Annotation neu (ohne Datenverlust). Eingriff – verändert die Live-Umgebung.',
-  'smoke-trigger':
-    'Startet einen kurzlebigen Health-Smoke-Job in der Zielumgebung. Eingriff – erzeugt einen Job im Cluster.',
 };
 
 /** Explanations for the general controls and sections. */
@@ -70,8 +62,6 @@ const UI_HELP = {
   app: 'Die Ziel-App, auf die sich alle Aktionen beziehen.',
   environment:
     'Zielumgebung der Aktionen. „dev“ = Entwicklung, „test“ = Test. Produktion ist hier bewusst nicht verfügbar.',
-  expert:
-    'Einfach: nur Aktionen mit Standardwerten – ideal für First Level. Experte: zusätzliche Konfiguration je Aktion über das Zahnrad-Symbol.',
   diagnose:
     'Nur lesende Aktionen. Sie verändern nichts an der App und können bedenkenlos ausgeführt werden.',
   eingriffe:
@@ -80,7 +70,7 @@ const UI_HELP = {
   history:
     'Aktionen dieser Sitzung. Auf einen Eintrag klicken, um dessen Ergebnis erneut anzuzeigen.',
   view:
-    'Diagnose: ein Klick prüft alles und schlägt Abhilfe vor. Operationen: einzelne Aktionen mit Parametern. Standard-Setup: der Operations-Vertrag der Ziel-App.',
+    'Diagnose: ein Klick prüft alles und schlägt Abhilfe vor. Admins können zusätzlich gezielte Operationen ausführen.',
 } as const;
 
 const STATUS_LABELS: Record<ActionStatus, string> = {
@@ -103,10 +93,8 @@ const STATUS_LABELS: Record<ActionStatus, string> = {
     MatInputModule,
     MatProgressBarModule,
     MatSelectModule,
-    MatSlideToggleModule,
     MatToolbarModule,
     InfoButton,
-    ContractPanel,
     DiagnosePanel,
   ],
   selector: 'app-root',
@@ -119,7 +107,6 @@ export class App implements OnInit {
   private readonly dialog = inject(MatDialog);
 
   readonly uiHelp = UI_HELP;
-  expertMode = readExpertMode();
   activeView: OpsView = 'diagnose';
 
   actor = '';
@@ -130,7 +117,6 @@ export class App implements OnInit {
   diagnostics: OperationAction[] = [];
   mutations: OperationAction[] = [];
   inputs: Record<string, Record<string, string>> = {};
-  contracts: readonly AppOperationsContract[] = [];
   private readonly actionTitles: Record<string, string> = {};
 
   loaded = false;
@@ -165,16 +151,14 @@ export class App implements OnInit {
     forkJoin({
       me: this.api.me(),
       actions: this.api.actions(),
-      contracts: this.api.contracts(),
     }).subscribe({
-      next: ({ me, actions, contracts }) => {
+      next: ({ me, actions }) => {
         this.actor = me.principal.email || me.principal.user;
         this.roles = me.principal.roles;
         this.diagnostics = actions.actions.filter(
           (action) => action.kind === 'diagnostic' && action.id !== 'diagnose-target'
         );
         this.mutations = actions.actions.filter((action) => action.kind === 'mutation');
-        this.contracts = contracts.contracts;
         for (const action of actions.actions) {
           this.actionTitles[action.id] = action.title;
           this.inputs[action.id] = {};
@@ -184,7 +168,7 @@ export class App implements OnInit {
             }
           }
         }
-        if (!this.isAdmin() && (this.activeView === 'users' || this.activeView === 'audit')) {
+        if (!this.isAdmin() && this.activeView !== 'diagnose') {
           this.activeView = 'diagnose';
         }
         this.loaded = true;
@@ -234,6 +218,10 @@ export class App implements OnInit {
   }
 
   setView(view: OpsView): void {
+    if (view !== 'diagnose' && !this.isAdmin()) {
+      this.activeView = 'diagnose';
+      return;
+    }
     this.activeView = view;
     this.confirmingActionId = '';
     if (view === 'users' && this.isAdmin()) {
@@ -324,13 +312,6 @@ export class App implements OnInit {
     });
   }
 
-  get currentContract(): AppOperationsContract | undefined {
-    return this.contracts.find(
-      (contract) =>
-        contract.app === this.selectedApp && contract.environment === this.selectedEnvironment
-    );
-  }
-
   actionSpecificInputs(action: OperationAction) {
     return action.inputs.filter(
       (input) => input.name !== 'targetApp' && input.name !== 'targetEnvironment'
@@ -349,21 +330,12 @@ export class App implements OnInit {
     return ROLE_LABELS[role as OpsRole] || role;
   }
 
-  /** Number of advanced inputs that differ from their default value. */
+  /** Number of action inputs that differ from their default value. */
   customizedCount(action: OperationAction): number {
     const values = this.inputs[action.id] || {};
     return this.actionSpecificInputs(action).filter(
       (input) => (values[input.name] ?? '') !== (input.defaultValue ?? '')
     ).length;
-  }
-
-  setExpertMode(enabled: boolean): void {
-    this.expertMode = enabled;
-    try {
-      localStorage.setItem(EXPERT_MODE_KEY, enabled ? '1' : '0');
-    } catch {
-      // localStorage may be unavailable; the in-memory toggle still works.
-    }
   }
 
   openConfig(action: OperationAction): void {
@@ -470,13 +442,5 @@ export class App implements OnInit {
           this.changeDetector.detectChanges();
         },
       });
-  }
-}
-
-function readExpertMode(): boolean {
-  try {
-    return localStorage.getItem(EXPERT_MODE_KEY) === '1';
-  } catch {
-    return false;
   }
 }

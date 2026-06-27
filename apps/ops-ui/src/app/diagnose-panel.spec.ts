@@ -13,8 +13,8 @@ function runWithFinding() {
     finishedAt: new Date().toISOString(),
     targetApp: 'varlens',
     targetEnvironment: 'test',
-    actor: 'op',
-    role: 'operator',
+    actor: 'admin',
+    role: 'admin',
     summary: 'Diagnose abgeschlossen.',
     evidence: [],
     diagnosis: {
@@ -58,7 +58,7 @@ describe('DiagnosePanel', () => {
     const fixture = TestBed.createComponent(DiagnosePanel);
     fixture.componentRef.setInput('app', 'varlens');
     fixture.componentRef.setInput('environment', 'test');
-    fixture.componentRef.setInput('roles', ['operator']);
+    fixture.componentRef.setInput('roles', ['admin']);
     if (selectedRun) {
       // Set before first change detection so the rendered state is stable.
       (fixture.componentInstance as unknown as { selectedRun: unknown }).selectedRun = selectedRun;
@@ -106,8 +106,8 @@ describe('DiagnosePanel', () => {
         startedAt: new Date().toISOString(),
         targetApp: 'varlens',
         targetEnvironment: 'test',
-        actor: 'op',
-        role: 'operator',
+        actor: 'admin',
+        role: 'admin',
         summary: '2 Pods gefunden.',
         evidence: [{ label: 'Pod varlens-1', value: 'Running' }],
       },

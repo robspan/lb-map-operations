@@ -270,7 +270,7 @@ function hashToken(token: string): string {
 }
 
 function parseRole(role: string): OpsRole {
-  if (role === 'first-level' || role === 'operator' || role === 'admin') {
+  if (role === 'first-level' || role === 'admin') {
     return role;
   }
   return 'admin';
