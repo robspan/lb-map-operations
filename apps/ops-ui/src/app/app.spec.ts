@@ -94,7 +94,7 @@ describe('App', () => {
   function bootstrap(
     principal: unknown,
     actions: unknown[],
-    view: 'diagnose' | 'operations' | 'users' | 'audit' = 'operations'
+    view: 'diagnose' | 'app-varlens' | 'platform' | 'users' | 'audit' = 'app-varlens'
   ) {
     const fixture = TestBed.createComponent(App);
     // Set the active tab before the first change detection to keep the rendered state stable.
@@ -160,7 +160,9 @@ describe('App', () => {
     const nav = compiled.querySelector('[data-testid="side-nav"]');
     expect(nav).toBeTruthy();
     expect(nav?.textContent).toContain('Diagnose');
-    expect(nav?.textContent).toContain('Operationen');
+    expect(nav?.textContent).toContain('VarLens');
+    expect(nav?.textContent).toContain('Infrastruktur');
+    expect(nav?.textContent).not.toContain('Operationen');
     expect(nav?.textContent).toContain('Operations-Konten');
     expect(nav?.textContent).toContain('Audit');
   });
@@ -334,7 +336,8 @@ describe('App', () => {
   it('should not run a mutation until it is confirmed', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
-      [mutation]
+      [mutation],
+      'platform'
     );
     await fixture.whenStable();
     fixture.detectChanges();
@@ -372,7 +375,7 @@ describe('App', () => {
     expect(compiled.textContent).toContain('Neustart angewendet.');
   });
 
-  it('renders VarLens user lifecycle actions as the primary admin operation block', async () => {
+  it('renders VarLens app tools separately from infrastructure operations', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnostic, varlensUserMutation, mutation]
@@ -383,13 +386,10 @@ describe('App', () => {
 
     expect(compiled.textContent).toContain('VarLens-Nutzer verwalten');
     expect(compiled.textContent).toContain('VarLens-Nutzer anlegen');
-    expect(compiled.textContent).toContain('Plattform-Eingriffe');
     expect(compiled.textContent).toContain('Prüfen und Nachsehen');
+    expect(compiled.textContent).not.toContain('Plattform-Eingriffe');
     const pageText = compiled.textContent || '';
     expect(pageText.indexOf('VarLens-Nutzer verwalten')).toBeLessThan(
-      pageText.indexOf('Plattform-Eingriffe')
-    );
-    expect(pageText.indexOf('Plattform-Eingriffe')).toBeLessThan(
       pageText.indexOf('Prüfen und Nachsehen')
     );
 
@@ -399,6 +399,22 @@ describe('App', () => {
 
     http.expectNone('/api/actions/varlens-user-create/runs');
     expect(document.body.textContent).toContain('VarLens-Nutzer anlegen');
+  });
+
+  it('renders infrastructure operations on their own page', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [diagnostic, varlensUserMutation, mutation],
+      'platform'
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).toContain('Plattform-Eingriffe');
+    expect(compiled.textContent).toContain('Stateless Restart');
+    expect(compiled.textContent).not.toContain('VarLens-Nutzer verwalten');
+    expect(compiled.textContent).not.toContain('Prüfen und Nachsehen');
   });
 
   it('loads VarLens users for lifecycle dropdowns and separates block from unblock choices', async () => {

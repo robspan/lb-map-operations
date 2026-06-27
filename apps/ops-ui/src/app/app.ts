@@ -24,7 +24,7 @@ import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
 import { OpsApiService, OpsAuditEvent, OpsUserSummary } from './ops-api.service';
 
-type OpsView = 'diagnose' | 'operations' | 'users' | 'audit';
+type OpsView = 'diagnose' | 'app-varlens' | 'platform' | 'users' | 'audit';
 
 /** German role labels for the toolbar chips. */
 const ROLE_LABELS: Record<OpsRole, string> = {

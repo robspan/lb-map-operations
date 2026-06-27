@@ -57,11 +57,20 @@
           <button
             type="button"
             class="nav-item"
-            [class.active]="activeView === 'operations'"
-            [attr.aria-current]="activeView === 'operations' ? 'page' : null"
-            (click)="setView('operations')"
+            [class.active]="activeView === 'app-varlens'"
+            [attr.aria-current]="activeView === 'app-varlens' ? 'page' : null"
+            (click)="setView('app-varlens')"
           >
-            Operationen
+            VarLens
+          </button>
+          <button
+            type="button"
+            class="nav-item"
+            [class.active]="activeView === 'platform'"
+            [attr.aria-current]="activeView === 'platform' ? 'page' : null"
+            (click)="setView('platform')"
+          >
+            Infrastruktur
           </button>
           <button
             type="button"
@@ -292,9 +301,14 @@
         </main>
       }
 
-      @if (loaded && !loadError && activeView === 'operations' && isAdmin()) {
+      @if (
+        loaded &&
+        !loadError &&
+        isAdmin() &&
+        (activeView === 'app-varlens' || activeView === 'platform')
+      ) {
         <main class="shell">
-          <section class="actions" aria-label="Operationen">
+          <section class="actions" [attr.aria-label]="activeView === 'app-varlens' ? 'VarLens' : 'Infrastruktur'">
             <ng-template #actionTile let-action>
               <article
                 class="action"
@@ -397,7 +411,7 @@
               </article>
             </ng-template>
 
-            @if (userMutations.length) {
+            @if (activeView === 'app-varlens' && userMutations.length) {
               <section class="group">
                 <header class="group-head">
                   <h2>VarLens-Nutzer verwalten</h2>
@@ -415,7 +429,7 @@
               </section>
             }
 
-            @if (platformMutations.length) {
+            @if (activeView === 'platform' && platformMutations.length) {
               <section class="group">
                 <header class="group-head">
                   <h2>Plattform-Eingriffe</h2>
@@ -428,7 +442,7 @@
               </section>
             }
 
-            @if (diagnostics.length) {
+            @if (activeView === 'app-varlens' && diagnostics.length) {
               <section class="group">
                 <header class="group-head">
                   <h2>Prüfen und Nachsehen</h2>
