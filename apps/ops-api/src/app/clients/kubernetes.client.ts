@@ -104,6 +104,12 @@ export class KubernetesClient {
     return list.items || [];
   }
 
+  async job(target: TargetConfig, jobName: string): Promise<Job> {
+    return this.request<Job>(
+      `/apis/batch/v1/namespaces/${target.namespace}/jobs/${jobName}`,
+    );
+  }
+
   async restartDeployment(target: TargetConfig, actor: string): Promise<void> {
     const now = new Date().toISOString();
     await this.request(

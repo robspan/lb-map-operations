@@ -101,17 +101,13 @@ describe('diagnosis rules', () => {
       'argo-status',
       'pod-summary',
       'smoke-result',
-      'smoke-trigger',
       'escalation-bundle',
     ]);
     expect(
-      report.findings[0].remedies.find(
-        (remedy) => remedy.actionId === 'smoke-trigger',
+      report.findings.flatMap((finding) =>
+        finding.remedies.map((remedy) => remedy.actionId),
       ),
-    ).toMatchObject({
-      enabled: false,
-      requiredRole: 'operator',
-    });
+    ).not.toContain('smoke-trigger');
   });
 
   it('does not infer missing pods or smoke results when collection failed', () => {

@@ -56,6 +56,17 @@ type CreatedResource = {
   };
 };
 
+type JobLike = {
+  readonly metadata?: {
+    readonly name?: string;
+  };
+  readonly status?: {
+    readonly active?: number;
+    readonly failed?: number;
+    readonly succeeded?: number;
+  };
+};
+
 type ActionOutput = {
   readonly summary: string;
   readonly evidence: readonly ActionEvidence[];
@@ -426,6 +437,12 @@ export class ActionRunnerService {
     const timeoutMs =
       validateSeconds(inputs.timeoutSeconds, 'timeoutSeconds') * 1000;
     const publicHealthUrl = contract.endpoints.publicHealthUrl;
+    const freshSmoke = await captureDiagnosisStep(
+      'smoke-run',
+      'Smoke-Job ausführen',
+      () => this.runFreshSmoke(target, contract, principal.user),
+      progress,
+    );
     const [
       deployment,
       pods,
@@ -517,6 +534,7 @@ export class ActionRunnerService {
       collectionError('Deployment', deployment),
       collectionError('Pods', pods),
       collectionError('ArgoCD', argo),
+      collectionError('Smoke-Run', freshSmoke),
       collectionError('Smoke-Jobs', smokeJobs),
       collectionError('Liveness', liveness),
       collectionError('Readiness', readiness),
@@ -563,6 +581,33 @@ export class ActionRunnerService {
       ],
       diagnosis,
     };
+  }
+
+  private async runFreshSmoke(
+    target: TargetConfig,
+    contract: AppOperationsContract,
+    actor: string,
+  ): Promise<JobLike> {
+    if (!contract.smoke.triggerAllowed) {
+      throw new BadRequestException(
+        'Smoke-Auslösung ist laut App-Vertrag nicht erlaubt.',
+      );
+    }
+    const jobName = await this.kubernetes.createSmokeJob(target, actor);
+    return this.waitForSmokeJob(target, jobName);
+  }
+
+  private async waitForSmokeJob(
+    target: TargetConfig,
+    jobName: string,
+  ): Promise<JobLike> {
+    const deadline = Date.now() + 15_000;
+    let latest = await this.kubernetes.job(target, jobName);
+    while (!isFinishedJob(latest) && Date.now() < deadline) {
+      await sleep(1_000);
+      latest = await this.kubernetes.job(target, jobName);
+    }
+    return latest;
   }
 
   private async argoStatus(
@@ -984,6 +1029,14 @@ function selectPod<T extends PodLike>(
   }
   const sorted = [...pods].sort(compareCreatedAt);
   return selection === 'newest' ? sorted.at(-1) : sorted[0];
+}
+
+function isFinishedJob(job: JobLike): boolean {
+  return Boolean(job.status?.succeeded || job.status?.failed);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function compareCreatedAt(

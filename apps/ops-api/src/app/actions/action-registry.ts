@@ -109,7 +109,7 @@ export const ACTIONS: readonly OperationAction[] = [
     id: 'diagnose-target',
     title: 'Diagnose starten',
     description:
-      'Standarddiagnose aus ArgoCD, Kubernetes, Endpunkten, Smoke-Status, Prometheus und Loki ausführen und passende Abhilfe vorschlagen.',
+      'Standarddiagnose aus ArgoCD, Kubernetes, Endpunkten, frischem Smoke-Job, Prometheus und Loki ausführen und passende Abhilfe vorschlagen.',
     role: 'first-level',
     kind: 'diagnostic',
     targetApp: 'varlens',

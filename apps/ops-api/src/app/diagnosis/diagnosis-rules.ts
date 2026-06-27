@@ -127,15 +127,6 @@ const REMEDIES = {
     requiredRole: 'first-level',
     risk: 'none',
   },
-  smokeTrigger: {
-    remedyId: 'trigger-smoke-job',
-    title: 'Smoke-Job starten',
-    description:
-      'Startet einen kurzlebigen Health-Smoke-Job im Ziel-Namespace.',
-    actionId: 'smoke-trigger',
-    requiredRole: 'operator',
-    risk: 'low',
-  },
   escalationBundle: {
     remedyId: 'create-escalation-bundle',
     title: 'Eskalationspaket erstellen',
@@ -210,7 +201,6 @@ export function buildDiagnosisReport(
         REMEDIES.argoStatus,
         REMEDIES.podSummary,
         REMEDIES.smokeResult,
-        REMEDIES.smokeTrigger,
         REMEDIES.escalationBundle,
       ),
     });
@@ -503,7 +493,7 @@ function addSmokeFindings(
       likelyCause:
         'Es wurde noch kein Smoke-Job ausgeführt oder der Job ist nicht mehr im Cluster vorhanden.',
       evidence: [{ label: 'Smoke-Jobs', value: 0 }],
-      remedies: remedies(roles, REMEDIES.smokeTrigger, REMEDIES.smokeResult),
+      remedies: remedies(roles, REMEDIES.smokeResult, REMEDIES.escalationBundle),
     });
     return;
   }
@@ -524,7 +514,6 @@ function addSmokeFindings(
         roles,
         REMEDIES.smokeResult,
         REMEDIES.logSummary,
-        REMEDIES.smokeTrigger,
         REMEDIES.escalationBundle,
       ),
     });
