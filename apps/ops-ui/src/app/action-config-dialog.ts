@@ -94,9 +94,12 @@ const INPUT_HELP: Record<string, string> = {
   `,
   styles: [
     `
+      h2[mat-dialog-title] {
+        letter-spacing: -0.2px;
+      }
       .hint {
-        margin: 0 0 12px;
-        color: #5f7079;
+        margin: 0 0 14px;
+        color: var(--muted, #5f7079);
         font-size: 0.85rem;
       }
       .fields {

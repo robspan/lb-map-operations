@@ -4,6 +4,7 @@ import {
   Component,
   Input,
   OnDestroy,
+  ViewRef,
   inject,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -86,6 +87,15 @@ export class DiagnosePanel implements OnDestroy {
 
   private streamSub?: Subscription;
 
+  /** Staggered reveal: incoming probe events are buffered and applied one per tick
+   *  so the scan reads as real work instead of flipping green all at once. */
+  private static readonly STEP_STAGGER_MS = 30;
+  private pendingSteps: DiagnosisStepEvent[] = [];
+  private pendingResult?: ActionRunResult;
+  private pendingError?: string;
+  private streamDone = false;
+  private drainTimer?: ReturnType<typeof setTimeout>;
+
   get findings(): readonly DiagnosisFinding[] {
     return [...(this.selectedRun?.diagnosis?.findings ?? [])].sort(
       (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
@@ -98,14 +108,19 @@ export class DiagnosePanel implements OnDestroy {
     }
     this.error = '';
     this.steps = [];
+    this.pendingSteps = [];
+    this.pendingResult = undefined;
+    this.pendingError = undefined;
+    this.streamDone = false;
+    this.clearDrain();
     this.running = true;
     this.streamSub?.unsubscribe();
     this.streamSub = this.api
       .streamDiagnose({ targetApp: this.app, targetEnvironment: this.environment, inputs: {} })
       .pipe(
         finalize(() => {
-          this.running = false;
-          this.changeDetector.detectChanges();
+          this.streamDone = true;
+          this.scheduleDrain();
         })
       )
       .subscribe({
@@ -113,26 +128,78 @@ export class DiagnosePanel implements OnDestroy {
           switch (event.type) {
             case 'started':
               this.steps = [];
+              this.pendingSteps = [];
               break;
             case 'step':
-              this.upsertStep(event.step);
+              this.pendingSteps.push(event.step);
               break;
             case 'result':
-              this.runs = [event.run, ...this.runs].slice(0, 15);
-              this.selectedRun = event.run;
-              this.remedyRuns = {};
+              this.pendingResult = event.run;
               break;
             case 'error':
-              this.error = event.message;
+              this.pendingError = event.message;
               break;
           }
-          this.changeDetector.detectChanges();
+          this.scheduleDrain();
         },
         error: () => {
-          this.error = 'Diagnose konnte nicht gestartet werden.';
-          this.changeDetector.detectChanges();
+          this.pendingError = 'Diagnose konnte nicht gestartet werden.';
+          this.streamDone = true;
+          this.scheduleDrain();
         },
       });
+  }
+
+  private scheduleDrain(): void {
+    if (!this.drainTimer) {
+      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+    }
+  }
+
+  /** Applies one buffered probe per tick, then commits the result once the queue drains. */
+  private drainTick(): void {
+    this.drainTimer = undefined;
+
+    const step = this.pendingSteps.shift();
+    if (step) {
+      this.upsertStep(step);
+      this.detect();
+      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+      return;
+    }
+
+    if (!this.streamDone) {
+      // Waiting for more probes to arrive from the stream.
+      this.drainTimer = setTimeout(() => this.drainTick(), DiagnosePanel.STEP_STAGGER_MS);
+      return;
+    }
+
+    if (this.pendingError) {
+      this.error = this.pendingError;
+      this.pendingError = undefined;
+    }
+    if (this.pendingResult) {
+      this.runs = [this.pendingResult, ...this.runs].slice(0, 15);
+      this.selectedRun = this.pendingResult;
+      this.remedyRuns = {};
+      this.pendingResult = undefined;
+    }
+    this.running = false;
+    this.detect();
+  }
+
+  private clearDrain(): void {
+    if (this.drainTimer) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = undefined;
+    }
+  }
+
+  private detect(): void {
+    const ref = this.changeDetector as ViewRef;
+    if (!ref.destroyed) {
+      ref.detectChanges();
+    }
   }
 
   select(run: ActionRunResult): void {
@@ -298,6 +365,7 @@ export class DiagnosePanel implements OnDestroy {
 
   ngOnDestroy(): void {
     this.streamSub?.unsubscribe();
+    this.clearDrain();
   }
 
   private runRemedy(remedy: SuggestedRemedy): void {

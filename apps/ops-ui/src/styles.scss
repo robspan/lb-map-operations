@@ -1,5 +1,46 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global styles + design tokens */
 @import '@angular/material/prebuilt-themes/azure-blue.css';
+
+:root {
+  /* surfaces */
+  --bg: #e9eef6;
+  --surface: #ffffff;
+  --surface-tint: #f6f8fc;
+  --ink: #1c2733;
+  --ink-soft: #45525f;
+  --muted: #7a8794;
+  --hair: #e7ecf3;
+
+  /* shape + depth */
+  --radius: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(22, 43, 72, 0.06), 0 2px 6px rgba(22, 43, 72, 0.05);
+  --shadow-md: 0 6px 20px rgba(22, 43, 72, 0.08);
+  --shadow-pop: 0 14px 38px rgba(22, 43, 72, 0.14);
+
+  /* accent */
+  --accent: #4f6ef0;
+  --accent-ink: #324bc0;
+  --accent-soft: #e9edfe;
+
+  /* pastel status tiles */
+  --crit-bg: #fdecef;
+  --crit-fg: #bb2f4c;
+  --crit-dot: #e2607a;
+  --warn-bg: #fdf3e1;
+  --warn-fg: #946410;
+  --warn-dot: #e0a23c;
+  --ok-bg: #e6f6ee;
+  --ok-fg: #1d8a52;
+  --ok-dot: #3cb878;
+  --info-bg: #e9f0fd;
+  --info-fg: #2f63cf;
+  --info-dot: #5b8def;
+  --neutral-bg: #eef1f6;
+  --neutral-fg: #5f6f7d;
+  --neutral-dot: #9aa7b4;
+}
 
 html,
 body {
@@ -10,14 +51,20 @@ body {
 
 body {
   margin: 0;
-  background: #eef3f6;
-  color: #152027;
+  background:
+    radial-gradient(1100px 520px at 88% -8%, #eef3fc 0%, rgba(238, 243, 252, 0) 70%),
+    linear-gradient(180deg, #eef2f9 0%, var(--bg) 100%);
+  background-attachment: fixed;
+  color: var(--ink);
   font-family:
     Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --mat-sys-brand-font:
     Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --mat-sys-plain-font:
     Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* retint Material primary to the calm indigo accent */
+  --mat-sys-primary: #4f6ef0;
+  --mat-sys-on-primary: #ffffff;
 }
 
 * {
@@ -29,6 +76,144 @@ body {
   max-width: 320px;
   white-space: pre-line;
   font-size: 0.8rem;
-  line-height: 1.4;
+  line-height: 1.45;
   text-align: left;
+  border-radius: 10px;
+}
+
+/* Softer dialog surface for the config modal */
+.cdk-overlay-container .mat-mdc-dialog-surface {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+}
+
+/* Shared status pills + dots (pastel) — part of the global design system. */
+.status {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--neutral-fg);
+  background: var(--neutral-bg);
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--neutral-dot);
+  flex: 0 0 auto;
+}
+.status-succeeded,
+.status-success {
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+}
+.status-dot.status-succeeded,
+.status-dot.status-success {
+  background: var(--ok-dot);
+}
+.status-failed,
+.status-rejected,
+.status-failure {
+  color: var(--crit-fg);
+  background: var(--crit-bg);
+}
+.status-dot.status-failed,
+.status-dot.status-rejected,
+.status-dot.status-failure {
+  background: var(--crit-dot);
+}
+.status-running,
+.status-started {
+  color: var(--info-fg);
+  background: var(--info-bg);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.status-pill.off {
+  background: var(--neutral-bg);
+  color: var(--neutral-fg);
+}
+
+/* Shared text + container utilities */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.muted {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.error {
+  color: var(--crit-fg);
+}
+.banner {
+  max-width: 1320px;
+  margin: 8px auto;
+}
+.banner.error {
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--crit-bg);
+}
+.empty {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Key/value evidence (operations result panel) */
+.evidence {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+.evidence-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr;
+  gap: 8px 16px;
+  align-items: start;
+}
+.evidence-row.is-log {
+  grid-template-columns: 1fr;
+}
+.evidence-label {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.evidence-value {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.evidence-value a {
+  color: var(--accent-ink);
+}
+.evidence-log {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: #10171d;
+  color: #d7e2e9;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

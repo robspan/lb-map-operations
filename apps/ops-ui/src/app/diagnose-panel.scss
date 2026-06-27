@@ -1,124 +1,184 @@
-$ink: #1f2a30;
-$line: #d5dce3;
-$muted: #5f7079;
-$danger: #b00020;
-$warn: #b26a00;
-$ok: #2e7d32;
-$info: #1565c0;
+/* Diagnose panel — the "system health scan". Tokens come from styles.scss. */
 
 .diagnose {
   display: grid;
   gap: 18px;
-  max-width: 1100px;
+  max-width: 1120px;
 }
 
+/* hero tile — the one place we spend boldness */
 .diagnose-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   flex-wrap: wrap;
+  padding: 22px 24px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(420px 200px at 100% 0%, #eef1ff 0%, rgba(238, 241, 255, 0) 70%),
+    linear-gradient(180deg, #ffffff 0%, var(--surface-tint) 100%);
+  box-shadow: var(--shadow-md);
 }
 
 .section-title {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: $ink;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--ink);
 }
-
 .intro .muted {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
+  max-width: 52ch;
 }
 
 .start-button {
   flex: 0 0 auto;
-  height: 44px;
-  font-size: 0.95rem;
+  height: 48px;
+  padding: 0 26px;
+  border-radius: var(--radius-pill);
+  font-size: 0.98rem;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(79, 110, 240, 0.32);
 }
 
 .muted {
-  color: $muted;
+  color: var(--muted);
   font-size: 0.85rem;
 }
-
 .banner.error,
 .error {
   margin: 0;
-  color: $danger;
+  color: var(--crit-fg);
 }
 
 .empty {
-  border: 1px dashed $line;
-  border-radius: 8px;
-  padding: 28px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 30px;
   text-align: center;
+  color: var(--muted);
 }
 
 .expander {
   border: none;
   background: none;
   padding: 4px 0;
-  color: $info;
+  color: var(--accent-ink);
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
+  font-weight: 600;
   text-align: left;
 }
 
-/* steps */
+/* steps — the scan checklist */
+.steps {
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
 .steps ul {
   list-style: none;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
-
 .step {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.85rem;
-  color: $ink;
+  gap: 12px;
+  font-size: 0.88rem;
+  color: var(--ink);
 }
 
 .step-icon {
-  width: 9px;
-  height: 9px;
+  position: relative;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: $muted;
+  background: var(--neutral-bg);
+  box-shadow: inset 0 0 0 1.5px var(--neutral-dot);
 }
-
+.step-icon::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
 .step-running .step-icon {
-  background: $info;
+  background: var(--info-bg);
+  box-shadow: inset 0 0 0 2px var(--info-dot);
 }
 .step-succeeded .step-icon {
-  background: $ok;
+  background: var(--ok-dot);
+  box-shadow: none;
+}
+.step-succeeded .step-icon::after {
+  content: '✓';
+  color: #fff;
 }
 .step-failed .step-icon {
-  background: $danger;
+  background: var(--crit-dot);
+  box-shadow: none;
 }
-.step-skipped .step-icon {
-  background: #b7c1c8;
+.step-failed .step-icon::after {
+  content: '✕';
+  color: #fff;
 }
 
 .step-label {
   flex: 1 1 auto;
 }
-
 .step-status {
-  font-size: 0.78rem;
-  color: $muted;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--muted);
 }
-
 .step-detail {
   flex-basis: 100%;
-  margin-left: 19px;
+  margin-left: 34px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .step {
+    animation: step-in 0.22s ease both;
+  }
+  .step-running .step-icon {
+    animation: ring-pulse 1s ease-in-out infinite;
+  }
+  .step-succeeded .step-icon,
+  .step-failed .step-icon {
+    animation: icon-pop 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  @keyframes step-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  @keyframes ring-pulse {
+    50% {
+      box-shadow: inset 0 0 0 2px var(--info-dot), 0 0 0 4px rgba(91, 141, 239, 0.18);
+    }
+  }
+  @keyframes icon-pop {
+    from {
+      transform: scale(0.4);
+      opacity: 0.4;
+    }
+  }
 }
 
 /* report */
@@ -127,30 +187,30 @@ $info: #1565c0;
   align-items: baseline;
   gap: 12px;
 }
-
 .report-head h3 {
   margin: 0;
-  font-size: 1.05rem;
-  color: $ink;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--ink);
 }
 
+/* findings — pastel tiles, no borders */
 .finding {
-  border: 1px solid $line;
-  border-left: 4px solid $muted;
-  border-radius: 8px;
-  background: #fff;
-  padding: 14px 16px;
-  margin-top: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px;
+  margin-top: 14px;
 }
-
 .finding.sev-critical {
-  border-left-color: $danger;
+  background: var(--crit-bg);
 }
 .finding.sev-warning {
-  border-left-color: $warn;
+  background: var(--warn-bg);
 }
 .finding.sev-info {
-  border-left-color: $info;
+  background: var(--info-bg);
 }
 
 .finding-head {
@@ -159,105 +219,104 @@ $info: #1565c0;
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .finding-head h4 {
   margin: 0;
   flex: 1 1 auto;
-  font-size: 0.98rem;
-  color: $ink;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--ink);
 }
 
 .sev-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: #fff;
-  background: $muted;
+  letter-spacing: 0.4px;
+  color: var(--neutral-fg);
+  background: rgba(255, 255, 255, 0.7);
 }
 .sev-badge.sev-critical {
-  background: $danger;
+  color: var(--crit-fg);
 }
 .sev-badge.sev-warning {
-  background: $warn;
+  color: var(--warn-fg);
 }
 .sev-badge.sev-info {
-  background: $info;
+  color: var(--info-fg);
 }
-
 .conf {
   white-space: nowrap;
 }
 
 .cause {
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   font-size: 0.9rem;
-  color: #33414a;
+  color: var(--ink-soft);
 }
 
-/* remedies */
+/* remedies — white sub-tiles inside the pastel finding */
 .remedies {
-  margin-top: 14px;
-  border-top: 1px solid #eef2f5;
-  padding-top: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.66);
 }
-
 .remedies h5 {
-  margin: 0 0 8px;
-  font-size: 0.8rem;
+  margin: 0 0 10px;
+  font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: $muted;
+  letter-spacing: 0.5px;
+  color: var(--ink-soft);
 }
-
 .remedy {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  padding: 8px 0;
+  padding: 10px 0;
 }
-
 .remedy + .remedy,
 .remedy-result + .remedy {
-  border-top: 1px dashed #eef2f5;
+  border-top: 1px solid var(--hair);
 }
-
 .remedy-info {
   flex: 1 1 auto;
   min-width: 0;
 }
-
 .remedy-title {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
-
+.remedy-title strong {
+  font-size: 0.92rem;
+  color: var(--ink);
+}
 .remedy-info p {
   margin: 4px 0 0;
   font-size: 0.85rem;
-  color: #3b4a52;
+  color: var(--ink-soft);
 }
-
 .disabled-reason {
   font-style: italic;
 }
 
 .risk {
-  font-size: 0.72rem;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #eef2f5;
-  color: $muted;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-bg);
+  color: var(--neutral-fg);
 }
 .risk-low,
 .risk-medium {
-  background: #fdf0e3;
-  color: $warn;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 
 .remedy-actions {
@@ -268,41 +327,25 @@ $info: #1565c0;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-
 .confirm-note {
   font-size: 0.8rem;
-  color: $danger;
+  color: var(--crit-fg);
 }
 
 .remedy-result {
-  padding: 6px 0 10px 0;
+  padding: 8px 0 4px;
 }
-
 .remedy-result .expander {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  color: var(--ink);
+  font-weight: 500;
 }
-
 .caret {
   margin-left: auto;
-  color: $muted;
-}
-
-.status-pill {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #fff;
-  background: $muted;
-}
-.status-pill.status-succeeded {
-  background: $ok;
-}
-.status-pill.status-failed {
-  background: $danger;
+  color: var(--muted);
 }
 
 /* evidence */
@@ -310,30 +353,30 @@ $info: #1565c0;
   display: grid;
   grid-template-columns: minmax(150px, 230px) 1fr;
   gap: 6px 16px;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
 }
-
 .evidence dt {
   font-weight: 600;
   font-size: 0.84rem;
-  color: $ink;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
-
 .evidence dd {
   margin: 0;
   min-width: 0;
   font-size: 0.86rem;
   overflow-wrap: anywhere;
 }
-
+.evidence a {
+  color: var(--accent-ink);
+}
 .evidence pre {
   margin: 0;
   max-height: 280px;
   overflow: auto;
-  padding: 10px;
-  border-radius: 6px;
-  background: #11181d;
+  padding: 12px;
+  border-radius: 10px;
+  background: #10171d;
   color: #d7e2e9;
   font-size: 0.76rem;
   white-space: pre-wrap;
@@ -342,69 +385,84 @@ $info: #1565c0;
 
 /* history */
 .history h3 {
-  margin: 0 0 8px;
-  font-size: 1.05rem;
-  color: $ink;
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--ink);
 }
-
 .history ul {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
-
 .history-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid $line;
-  border-radius: 6px;
-  background: #fff;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition: box-shadow 0.15s ease;
 }
-
 .history-item:hover {
-  background: #f3f7fa;
+  box-shadow: var(--shadow-md);
 }
 .history-item.active {
-  border-color: $info;
-  background: #eef4fb;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
-
 .history-target {
   flex: 1 1 auto;
   font-size: 0.88rem;
   font-weight: 600;
-  color: $ink;
+  color: var(--ink);
 }
-
 .history-count {
   flex: 0 0 auto;
-  font-size: 0.88rem;
-  color: $ink;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.status-pill {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--neutral-fg);
+  background: var(--neutral-bg);
+}
+.status-pill.status-succeeded {
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+}
+.status-pill.status-failed {
+  color: var(--crit-fg);
+  background: var(--crit-bg);
 }
 
 .status-dot {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: $muted;
+  background: var(--neutral-dot);
 }
 .status-dot.sev-critical {
-  background: $danger;
+  background: var(--crit-dot);
 }
 .status-dot.sev-warning {
-  background: $warn;
+  background: var(--warn-dot);
 }
 .status-dot.sev-info {
-  background: $info;
+  background: var(--info-dot);
 }
 
 @media (max-width: 640px) {
