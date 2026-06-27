@@ -26,7 +26,13 @@ export interface DiagnosisFacts {
     readonly status?: {
       readonly health?: { readonly status?: string };
       readonly sync?: { readonly status?: string; readonly revision?: string };
-      readonly operationState?: { readonly phase?: string };
+      readonly operationState?: {
+        readonly phase?: string;
+        readonly syncResult?: {
+          readonly resources?: readonly ArgoResourceObservation[];
+        };
+      };
+      readonly resources?: readonly ArgoResourceObservation[];
     };
   };
   readonly deployment?: {
@@ -72,6 +78,17 @@ export interface DiagnosisFacts {
     readonly logs?: LokiLogObservation;
   };
   readonly collectionErrors: readonly ActionEvidence[];
+}
+
+interface ArgoResourceObservation {
+  readonly kind?: string;
+  readonly name?: string;
+  readonly status?: string;
+  readonly hookPhase?: string;
+  readonly health?: {
+    readonly status?: string;
+    readonly message?: string;
+  };
 }
 
 type RemedyTemplate = Omit<SuggestedRemedy, 'enabled' | 'disabledReason'> & {
@@ -217,6 +234,7 @@ function addArgoFindings(
   const syncStatus = argoSyncStatus(facts);
   const healthStatus = argoHealthStatus(facts);
   const operationPhase = facts.argo?.status?.operationState?.phase;
+  const argoOnlyHasStaleSmokeFailure = staleSmokeOnlyArgoIssue(facts);
 
   if (syncStatus === 'OutOfSync') {
     findings.push({
@@ -242,7 +260,11 @@ function addArgoFindings(
     });
   }
 
-  if (healthStatus && healthStatus !== 'Healthy') {
+  if (
+    healthStatus &&
+    healthStatus !== 'Healthy' &&
+    !argoOnlyHasStaleSmokeFailure
+  ) {
     findings.push({
       findingId: 'argocd-health-not-healthy',
       severity: 'warning',
@@ -262,7 +284,11 @@ function addArgoFindings(
     });
   }
 
-  if (operationPhase && operationPhase !== 'Succeeded') {
+  if (
+    operationPhase &&
+    operationPhase !== 'Succeeded' &&
+    !argoOnlyHasStaleSmokeFailure
+  ) {
     findings.push({
       findingId: 'argocd-operation-active',
       severity: 'info',
@@ -349,6 +375,70 @@ function addEndpointFindings(
       ),
     });
   }
+}
+
+function staleSmokeOnlyArgoIssue(facts: DiagnosisFacts): boolean {
+  const healthStatus = argoHealthStatus(facts);
+  const operationPhase = facts.argo?.status?.operationState?.phase;
+  const argoLooksClean =
+    (!healthStatus || healthStatus === 'Healthy') &&
+    (!operationPhase || operationPhase === 'Succeeded');
+  if (argoLooksClean) {
+    return false;
+  }
+
+  const problemResources = argoProblemResources(facts);
+  return (
+    runtimeSignalsHealthy(facts) &&
+    latestSmokeSucceeded(facts) &&
+    problemResources.length > 0 &&
+    problemResources.every(isSmokeCronJobResource)
+  );
+}
+
+function runtimeSignalsHealthy(facts: DiagnosisFacts): boolean {
+  const desiredReplicas = facts.deployment?.status?.replicas ?? 0;
+  const readyReplicas = facts.deployment?.status?.readyReplicas ?? 0;
+  return (
+    Boolean(facts.endpoints.liveness?.ok) &&
+    Boolean(facts.endpoints.readiness?.ok) &&
+    desiredReplicas > 0 &&
+    readyReplicas >= desiredReplicas &&
+    facts.pods.some(isHealthyWorkloadPod)
+  );
+}
+
+function latestSmokeSucceeded(facts: DiagnosisFacts): boolean {
+  const latestJob = [...facts.smokeJobs].sort(compareCreatedAt).at(-1);
+  return Boolean(
+    latestJob?.status?.succeeded &&
+      !latestJob.status.failed &&
+      !latestJob.status.active,
+  );
+}
+
+function argoProblemResources(
+  facts: DiagnosisFacts,
+): readonly ArgoResourceObservation[] {
+  return [
+    ...(facts.argo?.status?.resources ?? []),
+    ...(facts.argo?.status?.operationState?.syncResult?.resources ?? []),
+  ].filter(isArgoProblemResource);
+}
+
+function isArgoProblemResource(resource: ArgoResourceObservation): boolean {
+  return Boolean(
+    (resource.status && resource.status !== 'Synced') ||
+      (resource.health?.status && resource.health.status !== 'Healthy') ||
+      (resource.hookPhase && resource.hookPhase !== 'Succeeded'),
+  );
+}
+
+function isSmokeCronJobResource(resource: ArgoResourceObservation): boolean {
+  return (
+    resource.kind === 'CronJob' &&
+    Boolean(resource.name?.toLowerCase().includes('smoke'))
+  );
 }
 
 function addWorkloadFindings(
@@ -819,6 +909,17 @@ function isWorkloadPod(pod: {
   }
   const phase = pod.status?.phase;
   return phase !== 'Succeeded' && phase !== 'Failed';
+}
+
+function isHealthyWorkloadPod(pod: {
+  readonly metadata?: {
+    readonly ownerReferences?: readonly {
+      readonly kind?: string;
+    }[];
+  };
+  readonly status?: { readonly phase?: string };
+}): boolean {
+  return isWorkloadPod(pod) && pod.status?.phase === 'Running';
 }
 
 function compareCreatedAt(

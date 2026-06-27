@@ -174,6 +174,89 @@ describe('diagnosis rules', () => {
     ]);
   });
 
+  it('ignores stale Argo smoke hook failures when the fresh runtime smoke succeeded', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        argo: {
+          status: {
+            sync: { status: 'Synced', revision: 'abc123' },
+            health: { status: 'Degraded' },
+            operationState: {
+              phase: 'Running',
+              syncResult: {
+                resources: [
+                  {
+                    kind: 'CronJob',
+                    name: 'varlens-deployed-smoke',
+                    status: 'Synced',
+                    hookPhase: 'Failed',
+                  },
+                ],
+              },
+            },
+          },
+        },
+        smokeJobs: [
+          {
+            metadata: {
+              name: 'varlens-deployed-smoke-old',
+              creationTimestamp: '2026-06-27T09:00:00.000Z',
+            },
+            status: { failed: 1 },
+          },
+          {
+            metadata: {
+              name: 'varlens-ops-smoke-new',
+              creationTimestamp: '2026-06-27T09:01:00.000Z',
+            },
+            status: { succeeded: 1 },
+          },
+        ],
+      },
+      ['first-level'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(report.findings.map((finding) => finding.findingId)).toEqual([
+      'no-obvious-fault',
+    ]);
+  });
+
+  it('keeps real Argo degraded findings when a non-smoke resource is failing', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        argo: {
+          status: {
+            sync: { status: 'Synced', revision: 'abc123' },
+            health: { status: 'Degraded' },
+            operationState: {
+              phase: 'Running',
+              syncResult: {
+                resources: [
+                  {
+                    kind: 'Deployment',
+                    name: 'varlens',
+                    status: 'OutOfSync',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      ['first-level'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(report.findings.map((finding) => finding.findingId)).toContain(
+      'argocd-health-not-healthy',
+    );
+  });
+
   it('returns a neutral finding when no standard fault is visible', () => {
     const report = buildDiagnosisReport(
       contract(),

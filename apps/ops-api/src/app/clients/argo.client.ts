@@ -2,6 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { KubernetesClient } from './kubernetes.client';
 import { OpsConfigService, TargetConfig } from '../config/ops-config.service';
 
+export interface ArgoResourceStatus {
+  readonly kind?: string;
+  readonly name?: string;
+  readonly namespace?: string;
+  readonly status?: string;
+  readonly hookPhase?: string;
+  readonly message?: string;
+  readonly health?: {
+    readonly status?: string;
+    readonly message?: string;
+  };
+}
+
 export interface ArgoApplicationStatus {
   readonly metadata?: {
     readonly name?: string;
@@ -18,17 +31,11 @@ export interface ArgoApplicationStatus {
     readonly operationState?: {
       readonly phase?: string;
       readonly message?: string;
-    };
-    readonly resources?: readonly {
-      readonly kind?: string;
-      readonly name?: string;
-      readonly namespace?: string;
-      readonly status?: string;
-      readonly health?: {
-        readonly status?: string;
-        readonly message?: string;
+      readonly syncResult?: {
+        readonly resources?: readonly ArgoResourceStatus[];
       };
-    }[];
+    };
+    readonly resources?: readonly ArgoResourceStatus[];
   };
 }
 

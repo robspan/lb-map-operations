@@ -24,7 +24,7 @@ import {
   VarLensUserSummary,
   roleAllows,
 } from '@lb-map-operations/ops-contract';
-import { ArgoClient } from '../clients/argo.client';
+import { ArgoClient, type ArgoApplicationStatus } from '../clients/argo.client';
 import { AuditService } from '../audit/audit.service';
 import { KubernetesClient } from '../clients/kubernetes.client';
 import { LokiClient, LokiLogObservation } from '../clients/loki.client';
@@ -1011,8 +1011,8 @@ export class ActionRunnerService {
         const phase = application.status?.operationState?.phase;
         if (
           syncStatus === 'Synced' &&
-          phase !== 'Running' &&
-          phase !== 'Pending'
+          ((phase !== 'Running' && phase !== 'Pending') ||
+            argoOnlyHasSmokeCronFailure(application))
         ) {
           return true;
         }
@@ -2280,6 +2280,26 @@ function repairPhaseEstimateSeconds(actionId: AutoRepairStep['actionId']): numbe
     return 30;
   }
   return 60;
+}
+
+function argoOnlyHasSmokeCronFailure(app: ArgoApplicationStatus): boolean {
+  const failedResources = [
+    ...(app.status?.resources ?? []),
+    ...(app.status?.operationState?.syncResult?.resources ?? []),
+  ].filter(
+    (resource) =>
+      (resource.status && resource.status !== 'Synced') ||
+      (resource.health?.status && resource.health.status !== 'Healthy') ||
+      (resource.hookPhase && resource.hookPhase !== 'Succeeded'),
+  );
+  return (
+    failedResources.length > 0 &&
+    failedResources.every(
+      (resource) =>
+        resource.kind === 'CronJob' &&
+        Boolean(resource.name?.toLowerCase().includes('smoke')),
+    )
+  );
 }
 
 function validateEnvironment(value: string): TargetEnvironment {
