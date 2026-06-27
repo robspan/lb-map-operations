@@ -75,9 +75,7 @@ describe('diagnosis rules', () => {
       (item) => item.findingId === 'public-endpoint-failing-internal-ready',
     );
     expect(finding?.likelyCause).toContain('Ingress');
-    expect(finding?.remedies.map((item) => item.actionId)).toEqual([
-      'escalation-bundle',
-    ]);
+    expect(finding?.remedies.map((item) => item.actionId)).toEqual([]);
   });
 
   it('keeps rollout restart first for liveness failures without GitOps drift', () => {
@@ -103,7 +101,6 @@ describe('diagnosis rules', () => {
       'rollout-restart',
       'pod-summary',
       'log-summary',
-      'escalation-bundle',
     ]);
   });
 
@@ -137,7 +134,6 @@ describe('diagnosis rules', () => {
       'rollout-restart',
       'pod-summary',
       'log-summary',
-      'escalation-bundle',
     ]);
   });
 
@@ -175,7 +171,6 @@ describe('diagnosis rules', () => {
       'smoke-result',
       'rollout-restart',
       'log-summary',
-      'escalation-bundle',
     ]);
   });
 
@@ -194,9 +189,7 @@ describe('diagnosis rules', () => {
     });
     expect(
       report.findings[0].remedies.map((remedy) => remedy.actionId),
-    ).toEqual([
-      'escalation-bundle',
-    ]);
+    ).toEqual([]);
     expect(
       report.findings.flatMap((finding) =>
         finding.remedies.map((remedy) => remedy.actionId),
@@ -219,7 +212,6 @@ describe('diagnosis rules', () => {
       'argo-status',
       'pod-summary',
       'smoke-result',
-      'escalation-bundle',
     ]);
   });
 
@@ -316,6 +308,9 @@ describe('diagnosis rules', () => {
       confidence: 'high',
     });
     expect(finding?.remedies.map((item) => item.actionId)).toContain(
+      'log-summary',
+    );
+    expect(finding?.remedies.map((item) => item.actionId)).not.toContain(
       'escalation-bundle',
     );
     expect(finding?.remedies.map((item) => item.actionId)).not.toContain(

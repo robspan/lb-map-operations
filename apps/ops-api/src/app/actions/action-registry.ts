@@ -294,21 +294,6 @@ export const ACTIONS: readonly OperationAction[] = [
     inputs: [targetAppInput, targetEnvironmentInput],
   },
   {
-    id: 'escalation-bundle',
-    title: 'Eskalationspaket',
-    description:
-      'Status, Pods, Events und ArgoCD-Zustand für interne IT-Eskalation bündeln.',
-    role: 'first-level',
-    kind: 'diagnostic',
-    targetApp: 'varlens',
-    inputs: [
-      targetAppInput,
-      targetEnvironmentInput,
-      podLimitInput,
-      eventLimitInput,
-    ],
-  },
-  {
     id: 'argo-sync',
     title: 'ArgoCD Sync',
     description: 'Nicht-prunenden Sync der Ziel-App auslösen.',

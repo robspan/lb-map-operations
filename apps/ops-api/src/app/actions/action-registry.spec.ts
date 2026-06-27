@@ -17,7 +17,6 @@ describe('action registry', () => {
       'ingress-status',
       'backup-status',
       'observability-status',
-      'escalation-bundle',
       'argo-sync',
       'varlens-user-create',
       'varlens-user-block',
@@ -31,7 +30,7 @@ describe('action registry', () => {
       (action) => action.id,
     );
     expect(firstLevelActions).toContain('app-health');
-    expect(firstLevelActions).toContain('escalation-bundle');
+    expect(firstLevelActions).not.toContain('escalation-bundle');
     expect(firstLevelActions).not.toContain('observability-links');
     expect(firstLevelActions).not.toContain('platform-overview');
     expect(firstLevelActions).not.toContain('data-store-status');

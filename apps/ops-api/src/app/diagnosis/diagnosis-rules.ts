@@ -139,15 +139,6 @@ const REMEDIES = {
     requiredRole: 'first-level',
     risk: 'none',
   },
-  escalationBundle: {
-    remedyId: 'create-escalation-bundle',
-    title: 'Eskalationspaket erstellen',
-    description:
-      'Bündelt Status, Events, ArgoCD-Zustand und Observability-Hinweise.',
-    actionId: 'escalation-bundle',
-    requiredRole: 'first-level',
-    risk: 'none',
-  },
 } satisfies Record<string, RemedyTemplate>;
 
 export function buildDiagnosisReport(
@@ -170,7 +161,6 @@ export function buildDiagnosisReport(
       remedies: remedies(
         roles,
         REMEDIES.observabilityLinks,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -248,7 +238,6 @@ function addArgoFindings(
         roles,
         REMEDIES.argoSync,
         REMEDIES.argoStatus,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -269,7 +258,6 @@ function addArgoFindings(
         roles,
         REMEDIES.argoStatus,
         REMEDIES.podSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -313,7 +301,6 @@ function addEndpointFindings(
         REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
     return;
@@ -335,7 +322,6 @@ function addEndpointFindings(
         REMEDIES.podSummary,
         REMEDIES.logSummary,
         REMEDIES.observabilityLinks,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -360,7 +346,6 @@ function addEndpointFindings(
       remedies: remedies(
         roles,
         REMEDIES.observabilityLinks,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -391,7 +376,6 @@ function addWorkloadFindings(
           REMEDIES.rolloutRestart,
           REMEDIES.podSummary,
           REMEDIES.logSummary,
-          REMEDIES.escalationBundle,
         ),
       });
     } else if (desiredReplicas > 0 && readyReplicas < desiredReplicas) {
@@ -411,7 +395,6 @@ function addWorkloadFindings(
           REMEDIES.rolloutRestart,
           REMEDIES.podSummary,
           REMEDIES.logSummary,
-          REMEDIES.escalationBundle,
         ),
       });
     }
@@ -435,7 +418,6 @@ function addWorkloadFindings(
         roles,
         REMEDIES.argoStatus,
         REMEDIES.podSummary,
-        REMEDIES.escalationBundle,
       ),
     });
     return;
@@ -461,7 +443,6 @@ function addWorkloadFindings(
         REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -481,7 +462,6 @@ function addWorkloadFindings(
         REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -506,7 +486,7 @@ function addSmokeFindings(
       likelyCause:
         'Es wurde noch kein Smoke-Job ausgeführt oder der Job ist nicht mehr im Cluster vorhanden.',
       evidence: [{ label: 'Smoke-Jobs', value: 0 }],
-      remedies: remedies(roles, REMEDIES.smokeResult, REMEDIES.escalationBundle),
+      remedies: remedies(roles, REMEDIES.smokeResult),
     });
     return;
   }
@@ -529,7 +509,6 @@ function addSmokeFindings(
         REMEDIES.smokeResult,
         REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -578,7 +557,6 @@ function addDependencyMetricFindings(
         REMEDIES.observabilityLinks,
         REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -614,7 +592,6 @@ function addHttpMetricFindings(
           REMEDIES.observabilityLinks,
           REMEDIES.rolloutRestart,
           REMEDIES.logSummary,
-          REMEDIES.escalationBundle,
         ),
       });
     }
@@ -644,7 +621,6 @@ function addHttpMetricFindings(
           REMEDIES.observabilityLinks,
           REMEDIES.rolloutRestart,
           REMEDIES.logSummary,
-          REMEDIES.escalationBundle,
         ),
       });
     }
@@ -694,7 +670,6 @@ function addOperationMetricFindings(
         REMEDIES.observabilityLinks,
         REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
-        REMEDIES.escalationBundle,
       ),
     });
   }
@@ -734,7 +709,6 @@ function addLogFindings(
       REMEDIES.logSummary,
       REMEDIES.observabilityLinks,
       REMEDIES.rolloutRestart,
-      REMEDIES.escalationBundle,
     ),
   });
 }
@@ -791,11 +765,10 @@ function noObviousFaultRemedies(roles: readonly OpsRole[]): readonly SuggestedRe
       REMEDIES.argoStatus,
       REMEDIES.podSummary,
       REMEDIES.smokeResult,
-      REMEDIES.escalationBundle,
     );
   }
 
-  return remedies(roles, REMEDIES.escalationBundle);
+  return [];
 }
 
 function argoSyncStatus(facts: DiagnosisFacts): string | undefined {

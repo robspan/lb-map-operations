@@ -702,8 +702,6 @@ export class ActionRunnerService {
         return this.backupStatus(target);
       case 'observability-status':
         return this.observabilityStatus(contract);
-      case 'escalation-bundle':
-        return this.escalationBundle(target, contract, inputs, principal);
       case 'argo-sync':
         return this.argoSync(target, contract);
       case 'varlens-user-create':
@@ -1640,77 +1638,6 @@ export class ActionRunnerService {
           label: 'Eskalationsfelder',
           value: contract.firstLevel.escalationFields.join(', '),
         },
-      ],
-    };
-  }
-
-  private async escalationBundle(
-    target: TargetConfig,
-    contract: AppOperationsContract,
-    inputs: Record<string, string>,
-    principal: OpsPrincipal,
-  ) {
-    const eventLimit = validateNumberOption(
-      inputs.eventLimit,
-      [4, 8, 12, 20],
-      'eventLimit',
-    );
-    const podLimit = validateNumberOption(
-      inputs.podLimit,
-      [5, 10, 20],
-      'podLimit',
-    );
-    const [health, podSummary, argo, links] = await Promise.all([
-      this.appHealth(target, contract, { timeoutSeconds: '8' }),
-      this.podSummary(target, {
-        eventLimit: String(eventLimit),
-        podLimit: String(podLimit),
-      }),
-      this.argoStatus(target, contract, {
-        detailLevel: 'summary',
-        resourceLimit: '10',
-      }).catch((error) => ({
-        summary: `ArgoCD-Status fehlgeschlagen: ${message(error)}`,
-        evidence: [{ label: 'ArgoCD-Fehler', value: message(error) }],
-      })),
-      this.observabilityLinks(contract),
-    ]);
-    if (!roleAllows(principal.roles, 'admin')) {
-      return {
-        summary: `Eskalationspaket für ${contract.app}/${contract.environment} zusammengestellt.`,
-        evidence: [
-          { label: 'App', value: contract.app },
-          { label: 'Umgebung', value: contract.environment },
-          { label: 'Zeitfenster', value: 'letzte 30 Minuten' },
-          { label: 'Status', value: health.summary },
-          {
-            label: 'Was First Level einsammeln soll',
-            value:
-              'Betroffener Nutzer, Zeitpunkt, Aktion/Route, sichtbare Fehlermeldung, Request-ID falls vorhanden.',
-          },
-          {
-            label: 'Nächster Schritt',
-            value:
-              'Mit diesen Angaben an interne IT eskalieren, wenn Nutzer weiterhin betroffen sind.',
-          },
-        ],
-      };
-    }
-    return {
-      summary: `Eskalationspaket für ${target.namespace} zusammengestellt.`,
-      evidence: [
-        {
-          label: 'Operations-Vertrag',
-          value: `${contract.app}/${contract.environment}`,
-        },
-        { label: 'Health-Zusammenfassung', value: health.summary },
-        { label: 'ArgoCD-Zusammenfassung', value: argo.summary },
-        { label: 'Pods-Zusammenfassung', value: podSummary.summary },
-        { label: 'Observability-Zusammenfassung', value: links.summary },
-        ...health.evidence,
-        ...argo.evidence,
-        ...podSummary.evidence.slice(0, 12),
-        ...links.evidence.slice(0, 8),
       ],
     };
   }
