@@ -11,7 +11,7 @@ export type ActionStatus =
 
 export type TargetApp = 'varlens';
 
-export type TargetEnvironment = 'dev' | 'test';
+export type TargetEnvironment = 'dev' | 'test' | 'prod';
 
 export type OperationsSignalSource =
   | 'http'
@@ -104,6 +104,8 @@ export interface ActionRunResult {
 
 export interface MeResponse {
   readonly principal: OpsPrincipal;
+  readonly targetApp: TargetApp;
+  readonly targetEnvironment: TargetEnvironment;
 }
 
 export interface ActionsResponse {

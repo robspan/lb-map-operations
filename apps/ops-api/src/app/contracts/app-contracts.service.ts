@@ -7,7 +7,6 @@ import {
 } from '@lb-map-operations/ops-contract';
 import { OpsConfigService, TargetConfig } from '../config/ops-config.service';
 
-const TARGET_ENVIRONMENTS: readonly TargetEnvironment[] = ['dev', 'test'];
 const TARGET_APPS: readonly TargetApp[] = ['varlens'];
 
 @Injectable()
@@ -15,8 +14,8 @@ export class AppContractsService {
   constructor(private readonly config: OpsConfigService) {}
 
   all(): readonly AppOperationsContract[] {
-    return TARGET_APPS.flatMap((app) =>
-      TARGET_ENVIRONMENTS.map((environment) => this.contract(app, environment)),
+    return TARGET_APPS.map((app) =>
+      this.contract(app, this.config.targetEnvironment),
     );
   }
 

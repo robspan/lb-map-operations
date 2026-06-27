@@ -14,6 +14,7 @@ import {
   DiagnosisStepEvent,
   DiagnosisStreamEvent,
   OpsPrincipal,
+  TargetApp,
   TargetEnvironment,
   VarLensUserSummary,
   roleAllows,
@@ -490,11 +491,7 @@ export class ActionRunnerService {
       this.identity.requireRole(principal, action.role);
     }
 
-    const targetEnvironment = validateEnvironment(request.targetEnvironment);
-    const target = this.config.target(
-      request.targetApp || action.targetApp,
-      targetEnvironment,
-    );
+    const target = this.requestTarget(request.targetApp || action.targetApp, request.targetEnvironment);
     const contract = this.contracts.contract(target.app, target.environment);
     const inputs = normalizeActionInputs(action, request.inputs);
     const role = this.identity.primaryRole(principal);
@@ -595,11 +592,7 @@ export class ActionRunnerService {
       this.identity.requireRole(principal, action.role);
     }
 
-    const targetEnvironment = validateEnvironment(request.targetEnvironment);
-    const target = this.config.target(
-      request.targetApp || action.targetApp,
-      targetEnvironment,
-    );
+    const target = this.requestTarget(request.targetApp || action.targetApp, request.targetEnvironment);
     const contract = this.contracts.contract(target.app, target.environment);
     const inputs = normalizeActionInputs(action, request.inputs);
     const role = this.identity.primaryRole(principal);
@@ -713,7 +706,7 @@ export class ActionRunnerService {
     principal: OpsPrincipal,
   ): Promise<readonly VarLensUserSummary[]> {
     this.identity.requireRole(principal, 'admin');
-    const target = this.config.target(targetApp, validateEnvironment(targetEnvironment));
+    const target = this.requestTarget(targetApp, targetEnvironment);
     const secret = await this.kubernetes.getPath<KubernetesSecretLike>(
       `/api/v1/namespaces/${target.namespace}/secrets/varlens-postgres-app`,
     );
@@ -811,6 +804,24 @@ export class ActionRunnerService {
       default:
         throw new BadRequestException(`action is not implemented: ${actionId}`);
     }
+  }
+
+  private requestTarget(
+    targetApp: TargetApp,
+    targetEnvironment: TargetEnvironment,
+  ): TargetConfig {
+    if (targetApp !== this.config.targetApp) {
+      throw new BadRequestException(
+        `Diese Operations-Instanz verwaltet nur ${this.config.targetApp}.`,
+      );
+    }
+    const requestedEnvironment = validateEnvironment(targetEnvironment);
+    if (requestedEnvironment !== this.config.targetEnvironment) {
+      throw new BadRequestException(
+        `Diese Operations-Instanz verwaltet nur ${this.config.targetEnvironment}.`,
+      );
+    }
+    return this.config.target(this.config.targetApp, this.config.targetEnvironment);
   }
 
   private async varlensUserCreate(
@@ -1832,10 +1843,10 @@ export class ActionRunnerService {
 }
 
 function validateEnvironment(value: string): TargetEnvironment {
-  if (value === 'dev' || value === 'test') {
+  if (value === 'dev' || value === 'test' || value === 'prod') {
     return value;
   }
-  throw new BadRequestException('Zielumgebung muss dev oder test sein.');
+  throw new BadRequestException('Zielumgebung muss dev, test oder prod sein.');
 }
 
 function validateTailLines(value: string): number {

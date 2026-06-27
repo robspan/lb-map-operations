@@ -101,7 +101,11 @@ describe('App', () => {
     fixture.componentInstance.activeView = view;
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/me').flush({ principal });
+    http.expectOne('/api/me').flush({
+      principal,
+      targetApp: 'varlens',
+      targetEnvironment: 'test',
+    });
     http.expectOne('/api/actions').flush({ actions });
     return { fixture, http };
   }
@@ -165,6 +169,22 @@ describe('App', () => {
     expect(nav?.textContent).not.toContain('Operationen');
     expect(nav?.textContent).toContain('Operations-Konten');
     expect(nav?.textContent).toContain('Audit');
+  });
+
+  it('renders the deployment target as read-only context', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [diagnostic]
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const target = compiled.querySelector('.target');
+
+    expect(target?.textContent).toContain('Stage');
+    expect(target?.textContent).toContain('Test');
+    expect(target?.querySelector('mat-select')).toBeNull();
+    expect(target?.textContent).not.toContain('Umgebung');
   });
 
   it('renders URL evidence as a link and long evidence as a log block', async () => {

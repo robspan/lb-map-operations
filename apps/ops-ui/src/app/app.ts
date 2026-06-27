@@ -32,6 +32,16 @@ const ROLE_LABELS: Record<OpsRole, string> = {
   admin: 'Admin',
 };
 
+const TARGET_APP_LABELS: Record<TargetApp, string> = {
+  varlens: 'VarLens',
+};
+
+const TARGET_ENVIRONMENT_LABELS: Record<TargetEnvironment, string> = {
+  dev: 'Entwicklung',
+  test: 'Test',
+  prod: 'Produktion',
+};
+
 /** Per-action explanations for the info buttons (what it does and when to use it). */
 const ACTION_HELP: Record<string, string> = {
   'app-health':
@@ -98,9 +108,10 @@ const INPUT_HELP: Record<string, string> = {
 
 /** Explanations for the general controls and sections. */
 const UI_HELP = {
-  app: 'Die Ziel-App, auf die sich alle Aktionen beziehen.',
+  target:
+    'Dieses Operations-Frontend ist fest auf eine App und eine Stage verdrahtet. Die Zielumgebung wird durch die Server-Installation bestimmt.',
   environment:
-    'Zielumgebung der Aktionen. „dev“ = Entwicklung, „test“ = Test. Produktion ist hier bewusst nicht verfügbar.',
+    'Stage dieser Operations-Installation. Die Test-Instanz arbeitet nur gegen Test; Produktion bekommt später eine eigene Instanz.',
   diagnose:
     'Nur lesende Aktionen. Sie verändern nichts an der App und können bedenkenlos ausgeführt werden.',
   eingriffe:
@@ -204,6 +215,8 @@ export class App implements OnInit {
       next: ({ me, actions }) => {
         this.actor = me.principal.email || me.principal.user;
         this.roles = me.principal.roles;
+        this.selectedApp = me.targetApp;
+        this.selectedEnvironment = me.targetEnvironment;
         this.diagnostics = actions.actions.filter(
           (action) =>
             action.kind === 'diagnostic' &&
@@ -292,18 +305,6 @@ export class App implements OnInit {
     }
     if (view === 'audit' && this.isAdmin()) {
       this.loadAudit();
-    }
-  }
-
-  targetChanged(): void {
-    this.confirmingActionId = '';
-    for (const action of this.userMutations) {
-      if (action.id !== 'varlens-user-create') {
-        this.inputs[action.id]['username'] = '';
-      }
-    }
-    if (this.isAdmin() && this.hasVarLensUserSelector()) {
-      this.loadVarLensUsers();
     }
   }
 
@@ -469,6 +470,14 @@ export class App implements OnInit {
 
   roleLabel(role: string): string {
     return ROLE_LABELS[role as OpsRole] || role;
+  }
+
+  appLabel(): string {
+    return TARGET_APP_LABELS[this.selectedApp] || this.selectedApp;
+  }
+
+  stageLabel(): string {
+    return TARGET_ENVIRONMENT_LABELS[this.selectedEnvironment] || this.selectedEnvironment;
   }
 
   isUserOperation(action: OperationAction): boolean {

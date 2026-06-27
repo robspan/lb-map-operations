@@ -11,7 +11,7 @@ describe('app contracts service', () => {
       service
         .all()
         .map((contract) => `${contract.app}/${contract.environment}`),
-    ).toEqual(['varlens/dev', 'varlens/test']);
+    ).toEqual(['varlens/test']);
   });
 
   it('makes VarLens first-level support depend on standard platform signals', () => {

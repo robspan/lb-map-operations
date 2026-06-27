@@ -23,6 +23,7 @@ import { IdentityService } from '../identity/identity.service';
 import { visibleActions } from '../actions/action-registry';
 import { ActionRunnerService } from '../actions/action-runner.service';
 import { AppContractsService } from '../contracts/app-contracts.service';
+import { OpsConfigService } from '../config/ops-config.service';
 
 @Controller('api')
 export class OperationsController {
@@ -30,12 +31,15 @@ export class OperationsController {
     private readonly identity: IdentityService,
     private readonly runner: ActionRunnerService,
     private readonly contracts: AppContractsService,
+    private readonly config: OpsConfigService,
   ) {}
 
   @Get('me')
   async me(@Req() request: Request): Promise<MeResponse> {
     return {
       principal: await this.identity.principalFromRequest(request),
+      targetApp: this.config.targetApp,
+      targetEnvironment: this.config.targetEnvironment,
     };
   }
 

@@ -96,26 +96,15 @@
 
     <div class="workspace">
       <section class="target" aria-label="Ziel">
-        <div class="field">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>App</mat-label>
-            <mat-select [(ngModel)]="selectedApp" (selectionChange)="targetChanged()">
-              <mat-option value="varlens">VarLens</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <app-info [text]="uiHelp.app" />
+        <div class="target-context">
+          <span class="target-label">Stage</span>
+          <strong>{{ stageLabel() }}</strong>
         </div>
-
-        <div class="field">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Umgebung</mat-label>
-            <mat-select [(ngModel)]="selectedEnvironment" (selectionChange)="targetChanged()">
-              <mat-option value="dev">Entwicklung (dev)</mat-option>
-              <mat-option value="test">Test (test)</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <app-info [text]="uiHelp.environment" />
+        <div class="target-context">
+          <span class="target-label">Bereich</span>
+          <strong>{{ activeView === 'app-varlens' ? appLabel() : 'Operations' }}</strong>
         </div>
+        <app-info [text]="uiHelp.target" />
 
         <span class="spacer"></span>
         <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">

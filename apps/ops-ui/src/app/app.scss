@@ -146,13 +146,11 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
-.target mat-form-field {
-  width: 168px;
-}
-.target .field {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+.target-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
 }
 
 .diagnose-view,

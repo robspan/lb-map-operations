@@ -20,6 +20,10 @@ export interface TargetConfig {
 
 @Injectable()
 export class OpsConfigService {
+  readonly targetApp: TargetApp = 'varlens';
+  readonly targetEnvironment = parseTargetEnvironment(
+    process.env.OPS_TARGET_ENVIRONMENT || 'test',
+  );
   readonly port = Number(process.env.PORT || 3000);
   readonly metricsPort = Number(process.env.OPS_METRICS_PORT || 9090);
   readonly uiPublicDir = process.env.OPS_UI_PUBLIC_DIR || '';
@@ -100,4 +104,11 @@ function splitCsv(value: string): string[] {
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+function parseTargetEnvironment(value: string): TargetEnvironment {
+  if (value === 'dev' || value === 'test' || value === 'prod') {
+    return value;
+  }
+  throw new Error('OPS_TARGET_ENVIRONMENT must be dev, test, or prod.');
 }

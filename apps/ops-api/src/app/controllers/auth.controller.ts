@@ -39,7 +39,11 @@ export class AuthController {
     }
     const token = await this.auth.createSession(principal);
     response.setHeader('set-cookie', this.sessionCookie(token));
-    return { principal };
+    return {
+      principal,
+      targetApp: this.config.targetApp,
+      targetEnvironment: this.config.targetEnvironment,
+    };
   }
 
   @Post('logout')
