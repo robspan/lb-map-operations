@@ -88,7 +88,7 @@ describe('App', () => {
     expect(fixture.componentInstance.activeView).toBe('diagnose');
   });
 
-  it('forces first-level users back to the diagnose tab', async () => {
+  it('does not render navigation for first-level users', async () => {
     const { fixture } = bootstrap(
       { user: 'support', groups: [], roles: ['first-level'] },
       [diagnostic]
@@ -97,8 +97,26 @@ describe('App', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(fixture.componentInstance.activeView).toBe('diagnose');
+    expect(compiled.querySelector('[data-testid="side-nav"]')).toBeNull();
     expect(compiled.textContent).not.toContain('Operationen');
     expect(compiled.querySelector('[data-testid="action-card"]')).toBeNull();
+  });
+
+  it('renders left navigation for admins', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [diagnostic],
+      'diagnose'
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const nav = compiled.querySelector('[data-testid="side-nav"]');
+    expect(nav).toBeTruthy();
+    expect(nav?.textContent).toContain('Diagnose');
+    expect(nav?.textContent).toContain('Operationen');
+    expect(nav?.textContent).toContain('Benutzer');
+    expect(nav?.textContent).toContain('Audit');
   });
 
   it('renders URL evidence as a link and long evidence as a log block', async () => {

@@ -39,55 +39,82 @@
 }
 
 @if (!loadError) {
-<section class="target" aria-label="Ziel">
-  <div class="field">
-    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-      <mat-label>App</mat-label>
-      <mat-select [(ngModel)]="selectedApp">
-        <mat-option value="varlens">VarLens</mat-option>
-      </mat-select>
-    </mat-form-field>
-    <app-info [text]="uiHelp.app" />
-  </div>
+  <div class="app-layout" [class.no-sidebar]="!isAdmin()">
+    @if (isAdmin()) {
+      <aside class="sidebar" aria-label="Navigation">
+        <nav class="side-nav" data-testid="side-nav">
+          <button
+            type="button"
+            class="nav-item"
+            [class.active]="activeView === 'diagnose'"
+            [attr.aria-current]="activeView === 'diagnose' ? 'page' : null"
+            (click)="setView('diagnose')"
+          >
+            Diagnose
+          </button>
+          <button
+            type="button"
+            class="nav-item"
+            [class.active]="activeView === 'operations'"
+            [attr.aria-current]="activeView === 'operations' ? 'page' : null"
+            (click)="setView('operations')"
+          >
+            Operationen
+          </button>
+          <button
+            type="button"
+            class="nav-item"
+            [class.active]="activeView === 'users'"
+            [attr.aria-current]="activeView === 'users' ? 'page' : null"
+            (click)="setView('users')"
+          >
+            Benutzer
+          </button>
+          <button
+            type="button"
+            class="nav-item"
+            [class.active]="activeView === 'audit'"
+            [attr.aria-current]="activeView === 'audit' ? 'page' : null"
+            (click)="setView('audit')"
+          >
+            Audit
+          </button>
+        </nav>
+      </aside>
+    }
 
-  <div class="field">
-    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-      <mat-label>Umgebung</mat-label>
-      <mat-select [(ngModel)]="selectedEnvironment">
-        <mat-option value="dev">Entwicklung (dev)</mat-option>
-        <mat-option value="test">Test (test)</mat-option>
-      </mat-select>
-    </mat-form-field>
-    <app-info [text]="uiHelp.environment" />
-  </div>
+    <div class="workspace">
+      <section class="target" aria-label="Ziel">
+        <div class="field">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>App</mat-label>
+            <mat-select [(ngModel)]="selectedApp">
+              <mat-option value="varlens">VarLens</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <app-info [text]="uiHelp.app" />
+        </div>
 
-  <div class="field view-switch">
-    <mat-button-toggle-group
-      [value]="activeView"
-      (change)="setView($event.value)"
-      aria-label="Ansicht"
-      data-testid="view-switch"
-    >
-        <mat-button-toggle value="diagnose">Diagnose</mat-button-toggle>
-        @if (isAdmin()) {
-          <mat-button-toggle value="operations">Operationen</mat-button-toggle>
-          <mat-button-toggle value="users">Benutzer</mat-button-toggle>
-          <mat-button-toggle value="audit">Audit</mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    <app-info [text]="uiHelp.view" />
-  </div>
+        <div class="field">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Umgebung</mat-label>
+            <mat-select [(ngModel)]="selectedEnvironment">
+              <mat-option value="dev">Entwicklung (dev)</mat-option>
+              <mat-option value="test">Test (test)</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <app-info [text]="uiHelp.environment" />
+        </div>
 
-  <span class="spacer"></span>
-  <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">
-    Aktualisieren
-  </button>
-</section>
-}
+        <span class="spacer"></span>
+        <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">
+          Aktualisieren
+        </button>
+      </section>
 
-@if (runningActionId) {
-  <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-}
+      @if (runningActionId) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      }
 
 @if (loaded && !loadError && activeView === 'diagnose') {
   <main class="diagnose-view">
@@ -423,4 +450,7 @@
       }
     </aside>
   </main>
+}
+    </div>
+  </div>
 }

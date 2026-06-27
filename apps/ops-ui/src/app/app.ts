@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -69,8 +68,6 @@ const UI_HELP = {
   result: 'Ergebnis der zuletzt ausgeführten Aktion samt Belegen und ggf. Fehlermeldung.',
   history:
     'Aktionen dieser Sitzung. Auf einen Eintrag klicken, um dessen Ergebnis erneut anzuzeigen.',
-  view:
-    'Diagnose: ein Klick prüft alles und schlägt Abhilfe vor. Admins können zusätzlich gezielte Operationen ausführen.',
 } as const;
 
 const STATUS_LABELS: Record<ActionStatus, string> = {
@@ -86,7 +83,6 @@ const STATUS_LABELS: Record<ActionStatus, string> = {
     CommonModule,
     FormsModule,
     MatButtonModule,
-    MatButtonToggleModule,
     MatChipsModule,
     MatDialogModule,
     MatFormFieldModule,
