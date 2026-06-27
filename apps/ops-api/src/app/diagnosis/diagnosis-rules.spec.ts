@@ -80,6 +80,105 @@ describe('diagnosis rules', () => {
     ]);
   });
 
+  it('keeps rollout restart first for liveness failures without GitOps drift', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        endpoints: {
+          liveness: endpoint('/livez', false, 503),
+          readiness: endpoint('/readyz', true, 200),
+          publicHealth: endpoint('https://varlens.example/healthz', false, 503),
+        },
+      },
+      ['admin'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(
+      report.findings
+        .find((item) => item.findingId === 'liveness-failing')
+        ?.remedies.map((item) => item.actionId),
+    ).toEqual([
+      'rollout-restart',
+      'pod-summary',
+      'log-summary',
+      'escalation-bundle',
+    ]);
+  });
+
+  it('prioritizes Argo sync for liveness failures when GitOps drift is visible', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        argo: {
+          status: {
+            sync: { status: 'OutOfSync', revision: 'abc123' },
+            health: { status: 'Degraded' },
+          },
+        },
+        endpoints: {
+          liveness: endpoint('/livez', false, 503),
+          readiness: endpoint('/readyz', true, 200),
+          publicHealth: endpoint('https://varlens.example/healthz', false, 503),
+        },
+      },
+      ['admin'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(
+      report.findings
+        .find((item) => item.findingId === 'liveness-failing')
+        ?.remedies.map((item) => item.actionId),
+    ).toEqual([
+      'argo-sync',
+      'rollout-restart',
+      'pod-summary',
+      'log-summary',
+      'escalation-bundle',
+    ]);
+  });
+
+  it('prioritizes Argo sync for failed smoke results when GitOps drift is visible', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        argo: {
+          status: {
+            sync: { status: 'OutOfSync', revision: 'abc123' },
+            health: { status: 'Degraded' },
+          },
+        },
+        smokeJobs: [
+          {
+            metadata: {
+              name: 'varlens-smoke-failed',
+              creationTimestamp: '2026-06-27T09:10:00.000Z',
+            },
+            status: { failed: 1 },
+          },
+        ],
+      },
+      ['admin'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(
+      report.findings
+        .find((item) => item.findingId === 'latest-smoke-failed')
+        ?.remedies.map((item) => item.actionId),
+    ).toEqual([
+      'argo-sync',
+      'smoke-result',
+      'rollout-restart',
+      'log-summary',
+      'escalation-bundle',
+    ]);
+  });
+
   it('returns a neutral finding when no standard fault is visible', () => {
     const report = buildDiagnosisReport(
       contract(),

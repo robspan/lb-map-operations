@@ -307,8 +307,9 @@ function addEndpointFindings(
       likelyCause:
         'Der App-Prozess ist nicht stabil erreichbar oder der Service-Pfad ist defekt.',
       evidence: endpointEvidence('Liveness', liveness),
-      remedies: remedies(
+      remedies: runtimeRepairRemedies(
         roles,
+        facts,
         REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
@@ -327,8 +328,9 @@ function addEndpointFindings(
       likelyCause:
         'Der Prozess lebt, aber eine harte Laufzeitabhängigkeit oder Konfiguration verhindert Nutzbarkeit.',
       evidence: endpointEvidence('Readiness', readiness),
-      remedies: remedies(
+      remedies: runtimeRepairRemedies(
         roles,
+        facts,
         REMEDIES.rolloutRestart,
         REMEDIES.podSummary,
         REMEDIES.logSummary,
@@ -521,8 +523,9 @@ function addSmokeFindings(
         { label: 'Smoke-Job', value: latestJob.metadata?.name || 'unbekannt' },
         { label: 'Fehlgeschlagen', value: latestJob.status.failed },
       ],
-      remedies: remedies(
+      remedies: runtimeRepairRemedies(
         roles,
+        facts,
         REMEDIES.smokeResult,
         REMEDIES.rolloutRestart,
         REMEDIES.logSummary,
@@ -763,6 +766,21 @@ function remedies(
         : `Benötigt Rolle ${template.requiredRole}.`,
     };
   });
+}
+
+function runtimeRepairRemedies(
+  roles: readonly OpsRole[],
+  facts: DiagnosisFacts,
+  ...templates: readonly RemedyTemplate[]
+): readonly SuggestedRemedy[] {
+  if (argoSyncStatus(facts) !== 'OutOfSync') {
+    return remedies(roles, ...templates);
+  }
+
+  const withoutDuplicateSync = templates.filter(
+    (template) => template.remedyId !== REMEDIES.argoSync.remedyId,
+  );
+  return remedies(roles, REMEDIES.argoSync, ...withoutDuplicateSync);
 }
 
 function noObviousFaultRemedies(roles: readonly OpsRole[]): readonly SuggestedRemedy[] {
