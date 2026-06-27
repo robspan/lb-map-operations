@@ -30,23 +30,23 @@ export class OperationsController {
   ) {}
 
   @Get('me')
-  me(@Req() request: Request): MeResponse {
+  async me(@Req() request: Request): Promise<MeResponse> {
     return {
-      principal: this.identity.principalFromRequest(request),
+      principal: await this.identity.principalFromRequest(request),
     };
   }
 
   @Get('actions')
-  actions(@Req() request: Request): ActionsResponse {
-    const principal = this.identity.principalFromRequest(request);
+  async actions(@Req() request: Request): Promise<ActionsResponse> {
+    const principal = await this.identity.principalFromRequest(request);
     return {
       actions: visibleActions(principal.roles),
     };
   }
 
   @Get('contracts')
-  contractsList(@Req() request: Request): ContractsResponse {
-    this.identity.principalFromRequest(request);
+  async contractsList(@Req() request: Request): Promise<ContractsResponse> {
+    await this.identity.principalFromRequest(request);
     return {
       contracts: this.contracts.all(),
     };
@@ -59,7 +59,7 @@ export class OperationsController {
     @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    const principal = this.identity.principalFromRequest(request);
+    const principal = await this.identity.principalFromRequest(request);
     response.setHeader('content-type', 'text/event-stream; charset=utf-8');
     response.setHeader('cache-control', 'no-cache, no-transform');
     response.setHeader('connection', 'keep-alive');
@@ -78,14 +78,18 @@ export class OperationsController {
     @Body() body: ActionRunRequest,
     @Req() request: Request,
   ): Promise<ActionRunResponse> {
-    const principal = this.identity.principalFromRequest(request);
+    const principal = await this.identity.principalFromRequest(request);
     return {
       run: await this.runner.run(actionId, body, principal),
     };
   }
 
   @Get('runs/:runId')
-  runStatus(@Param('runId') runId: string): ActionRunResponse {
+  async runStatus(
+    @Param('runId') runId: string,
+    @Req() request: Request,
+  ): Promise<ActionRunResponse> {
+    await this.identity.principalFromRequest(request);
     return {
       run: this.runner.runStatus(runId),
     };

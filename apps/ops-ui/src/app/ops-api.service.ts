@@ -18,6 +18,42 @@ export class OpsApiService {
     return this.http.get<MeResponse>('/api/me');
   }
 
+  login(username: string, password: string) {
+    return this.http.post<MeResponse>('/api/auth/login', { username, password });
+  }
+
+  logout() {
+    return this.http.post<{ ok: boolean }>('/api/auth/logout', {});
+  }
+
+  users() {
+    return this.http.get<{ users: OpsUserSummary[] }>('/api/auth/users');
+  }
+
+  createUser(input: {
+    username: string;
+    displayName: string;
+    email?: string;
+    password: string;
+    role: string;
+  }) {
+    return this.http.post<{ user: OpsUserSummary }>('/api/auth/users', input);
+  }
+
+  resetPassword(username: string, password: string) {
+    return this.http.post<{ user: OpsUserSummary }>(
+      `/api/auth/users/${encodeURIComponent(username)}/reset-password`,
+      { password }
+    );
+  }
+
+  setUserActive(username: string, active: boolean) {
+    return this.http.post<{ user: OpsUserSummary }>('/api/auth/users/set-active', {
+      username,
+      active,
+    });
+  }
+
   actions() {
     return this.http.get<ActionsResponse>('/api/actions');
   }
@@ -88,4 +124,14 @@ export class OpsApiService {
       return () => controller.abort();
     });
   }
+}
+
+export interface OpsUserSummary {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly email?: string;
+  readonly role: string;
+  readonly active: boolean;
+  readonly mustChangePassword: boolean;
 }

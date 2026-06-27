@@ -17,6 +17,7 @@ import {
   roleAllows,
 } from '@lb-map-operations/ops-contract';
 import { ArgoClient } from '../clients/argo.client';
+import { AuditService } from '../audit/audit.service';
 import { KubernetesClient } from '../clients/kubernetes.client';
 import {
   LokiClient,
@@ -72,6 +73,7 @@ type DiagnosisProgress = (step: DiagnosisStepEvent) => void;
 export class ActionRunnerService {
   constructor(
     private readonly argo: ArgoClient,
+    private readonly audit: AuditService,
     private readonly config: OpsConfigService,
     private readonly contracts: AppContractsService,
     private readonly identity: IdentityService,
@@ -119,6 +121,15 @@ export class ActionRunnerService {
     });
 
     this.logRun(started, 'started', 0);
+    await this.audit.record({
+      actor: principal.user,
+      role,
+      action: actionId,
+      targetApp: target.app,
+      targetEnvironment: target.environment,
+      result: 'started',
+      runId,
+    });
 
     try {
       const output = await this.execute(
@@ -140,6 +151,16 @@ export class ActionRunnerService {
       });
       this.metrics.record(actionId, role, 'succeeded', durationMs);
       this.logRun(run, 'succeeded', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: actionId,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'success',
+        runId,
+        metadata: { durationMs },
+      });
       return run;
     } catch (error) {
       const finishedAt = new Date();
@@ -154,6 +175,16 @@ export class ActionRunnerService {
       });
       this.metrics.record(actionId, role, 'failed', durationMs);
       this.logRun(run, 'failed', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: actionId,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'failure',
+        runId,
+        metadata: { durationMs, error: message(error) },
+      });
       return run;
     }
   }
@@ -195,6 +226,15 @@ export class ActionRunnerService {
     });
 
     this.logRun(started, 'started', 0);
+    await this.audit.record({
+      actor: principal.user,
+      role,
+      action: action.id,
+      targetApp: target.app,
+      targetEnvironment: target.environment,
+      result: 'started',
+      runId,
+    });
     emit({
       type: 'started',
       runId,
@@ -223,6 +263,16 @@ export class ActionRunnerService {
       });
       this.metrics.record(action.id, role, 'succeeded', durationMs);
       this.logRun(run, 'succeeded', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: action.id,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'success',
+        runId,
+        metadata: { durationMs },
+      });
       emit({ type: 'result', runId, run });
     } catch (error) {
       const finishedAt = new Date();
@@ -238,6 +288,16 @@ export class ActionRunnerService {
       });
       this.metrics.record(action.id, role, 'failed', durationMs);
       this.logRun(run, 'failed', durationMs);
+      await this.audit.record({
+        actor: principal.user,
+        role,
+        action: action.id,
+        targetApp: target.app,
+        targetEnvironment: target.environment,
+        result: 'failure',
+        runId,
+        metadata: { durationMs, error: messageText },
+      });
       emit({ type: 'error', runId, message: messageText });
     }
   }

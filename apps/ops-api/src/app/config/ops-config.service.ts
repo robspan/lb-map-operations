@@ -23,6 +23,7 @@ export class OpsConfigService {
   readonly port = Number(process.env.PORT || 3000);
   readonly metricsPort = Number(process.env.OPS_METRICS_PORT || 9090);
   readonly uiPublicDir = process.env.OPS_UI_PUBLIC_DIR || '';
+  readonly databaseUrl = process.env.OPS_PG_URL || process.env.DATABASE_URL || '';
   readonly kubernetesApiBase =
     process.env.OPS_KUBERNETES_API_BASE || 'https://kubernetes.default.svc';
   readonly kubernetesTokenFile =
@@ -52,6 +53,15 @@ export class OpsConfigService {
   readonly devAuthUser = process.env.OPS_DEV_AUTH_USER || '';
   readonly devAuthEmail = process.env.OPS_DEV_AUTH_EMAIL || '';
   readonly devAuthGroups = splitCsv(process.env.OPS_DEV_AUTH_GROUPS || '');
+  readonly bootstrapUsername = process.env.OPS_BOOTSTRAP_USERNAME || '';
+  readonly bootstrapPasswordHash = process.env.OPS_BOOTSTRAP_PASSWORD_HASH || '';
+  readonly bootstrapDisplayName = process.env.OPS_BOOTSTRAP_DISPLAY_NAME || '';
+  readonly bootstrapEmail = process.env.OPS_BOOTSTRAP_EMAIL || '';
+  readonly bootstrapRole = process.env.OPS_BOOTSTRAP_ROLE || 'admin';
+  readonly sessionCookieName =
+    process.env.NODE_ENV === 'production' ? '__Host-lb-map-ops.sid' : 'lb-map-ops.sid';
+  readonly sessionMaxAgeSeconds = Number(process.env.OPS_SESSION_MAX_AGE_SECONDS || 60 * 60 * 4);
+  readonly auditRetentionDays = Number(process.env.OPS_AUDIT_RETENTION_DAYS || 90);
 
   target(app: TargetApp, environment: TargetEnvironment): TargetConfig {
     if (app !== 'varlens') {

@@ -32,6 +32,25 @@ $danger: #b00020;
   font-size: 0.75rem;
 }
 
+.login-view {
+  min-height: calc(100vh - 64px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-box {
+  width: min(380px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.login-box h1 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+  color: $ink;
+}
+
 .target {
   display: flex;
   flex-wrap: wrap;
@@ -67,7 +86,8 @@ $danger: #b00020;
 }
 
 .contract-view,
-.diagnose-view {
+.diagnose-view,
+.users-view {
   max-width: 1320px;
   margin: 0 auto;
   padding: 12px 24px 32px;
@@ -75,9 +95,53 @@ $danger: #b00020;
 
 @media (max-width: 600px) {
   .contract-view,
-  .diagnose-view {
+  .diagnose-view,
+  .users-view {
     padding-inline: 16px;
   }
+}
+
+.user-create {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.user-create h2,
+.user-table h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 1.05rem;
+  color: $ink;
+}
+
+.user-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid $line;
+}
+
+.user-table th,
+.user-table td {
+  padding: 10px;
+  border-bottom: 1px solid $line;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.user-table th {
+  font-size: 0.78rem;
+  color: $muted;
+  font-weight: 600;
+}
+
+.user-table td:nth-child(5) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .banner {

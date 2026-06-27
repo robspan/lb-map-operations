@@ -8,9 +8,37 @@
         <mat-chip class="role-chip">{{ roleLabel(role) }}</mat-chip>
       }
     </mat-chip-set>
+    <button mat-button type="button" (click)="logout()">Abmelden</button>
   }
 </mat-toolbar>
 
+@if (loadError) {
+  <main class="login-view">
+    <form class="login-box" (ngSubmit)="login()">
+      <h1>Anmeldung</h1>
+      <mat-form-field appearance="outline">
+        <mat-label>Benutzer</mat-label>
+        <input matInput name="username" [(ngModel)]="loginUsername" autocomplete="username" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Passwort</mat-label>
+        <input
+          matInput
+          type="password"
+          name="password"
+          [(ngModel)]="loginPassword"
+          autocomplete="current-password"
+        />
+      </mat-form-field>
+      @if (loginError) {
+        <p class="error">{{ loginError }}</p>
+      }
+      <button mat-flat-button color="primary" type="submit">Anmelden</button>
+    </form>
+  </main>
+}
+
+@if (!loadError) {
 <section class="target" aria-label="Ziel">
   <div class="field">
     <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -40,10 +68,13 @@
       aria-label="Ansicht"
       data-testid="view-switch"
     >
-      <mat-button-toggle value="diagnose">Diagnose</mat-button-toggle>
-      <mat-button-toggle value="operations">Operationen</mat-button-toggle>
-      <mat-button-toggle value="contract">Standard-Setup</mat-button-toggle>
-    </mat-button-toggle-group>
+        <mat-button-toggle value="diagnose">Diagnose</mat-button-toggle>
+        <mat-button-toggle value="operations">Operationen</mat-button-toggle>
+        <mat-button-toggle value="contract">Standard-Setup</mat-button-toggle>
+        @if (isAdmin()) {
+          <mat-button-toggle value="users">Benutzer</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
     <app-info [text]="uiHelp.view" />
   </div>
 
@@ -65,13 +96,10 @@
     Aktualisieren
   </button>
 </section>
+}
 
 @if (runningActionId) {
   <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-}
-
-@if (loadError) {
-  <p class="banner error">{{ loadError }}</p>
 }
 
 @if (loaded && !loadError && activeView === 'diagnose') {
@@ -81,6 +109,95 @@
       [environment]="selectedEnvironment"
       [roles]="roles"
     />
+  </main>
+}
+
+@if (loaded && !loadError && activeView === 'users' && isAdmin()) {
+  <main class="users-view">
+    @if (userError) {
+      <p class="banner error">{{ userError }}</p>
+    }
+    <section class="user-create">
+      <h2>Benutzer anlegen</h2>
+      <mat-form-field appearance="outline">
+        <mat-label>Benutzer</mat-label>
+        <input matInput [(ngModel)]="newUser.username" name="newUsername" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Name</mat-label>
+        <input matInput [(ngModel)]="newUser.displayName" name="newDisplayName" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>E-Mail</mat-label>
+        <input matInput [(ngModel)]="newUser.email" name="newEmail" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Initiales Passwort</mat-label>
+        <input matInput type="password" [(ngModel)]="newUser.password" name="newPassword" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Rolle</mat-label>
+        <mat-select [(ngModel)]="newUser.role" name="newRole">
+          <mat-option value="first-level">First Level</mat-option>
+          <mat-option value="operator">Operator</mat-option>
+          <mat-option value="admin">Admin</mat-option>
+        </mat-select>
+      </mat-form-field>
+      <button mat-flat-button color="primary" type="button" (click)="createUser()">
+        Anlegen
+      </button>
+    </section>
+
+    <section class="user-table">
+      <h2>Benutzer</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Benutzer</th>
+            <th>Name</th>
+            <th>Rolle</th>
+            <th>Status</th>
+            <th>Passwort setzen</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of users; track user.username) {
+            <tr>
+              <td>{{ user.username }}</td>
+              <td>{{ user.displayName }}</td>
+              <td>{{ roleLabel(user.role) }}</td>
+              <td>{{ user.active ? 'aktiv' : 'deaktiviert' }}</td>
+              <td>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Neues Passwort</mat-label>
+                  <input
+                    matInput
+                    type="password"
+                    [(ngModel)]="resetPasswords[user.username]"
+                    [name]="'reset-' + user.username"
+                  />
+                </mat-form-field>
+                <button mat-stroked-button type="button" (click)="resetPassword(user)">
+                  Setzen
+                </button>
+              </td>
+              <td>
+                @if (user.active) {
+                  <button mat-stroked-button type="button" (click)="setUserActive(user, false)">
+                    Deaktivieren
+                  </button>
+                } @else {
+                  <button mat-stroked-button type="button" (click)="setUserActive(user, true)">
+                    Aktivieren
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
   </main>
 }
 

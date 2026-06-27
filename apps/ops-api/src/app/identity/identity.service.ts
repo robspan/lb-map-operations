@@ -1,13 +1,28 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import { OpsPrincipal, OpsRole, roleAllows } from '@lb-map-operations/ops-contract';
+import { AuthService } from '../auth/auth.service';
 import { OpsConfigService } from '../config/ops-config.service';
 
 @Injectable()
 export class IdentityService {
-  constructor(private readonly config: OpsConfigService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: OpsConfigService,
+  ) {}
 
-  principalFromRequest(request: Request): OpsPrincipal {
+  async principalFromRequest(request: Request): Promise<OpsPrincipal> {
+    const sessionPrincipal = await this.auth.principalForSessionToken(
+      cookieValue(request, this.config.sessionCookieName),
+    );
+    if (sessionPrincipal) {
+      return sessionPrincipal;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException('authentication required');
+    }
+
     const user = headerValue(request, 'x-forwarded-user');
     const email = headerValue(request, 'x-forwarded-email');
     const groups = splitGroups(headerValue(request, 'x-forwarded-groups'));
@@ -21,7 +36,7 @@ export class IdentityService {
       };
     }
 
-    if (process.env.NODE_ENV !== 'production' && this.config.devAuthUser) {
+    if (this.config.devAuthUser) {
       return {
         user: this.config.devAuthUser,
         email: this.config.devAuthEmail || undefined,
@@ -62,6 +77,21 @@ export class IdentityService {
     }
     return roles;
   }
+}
+
+export function cookieValue(request: Request, name: string): string {
+  const raw = headerValue(request, 'cookie');
+  if (!raw) {
+    return '';
+  }
+  const prefix = `${name}=`;
+  for (const item of raw.split(';')) {
+    const trimmed = item.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return '';
 }
 
 function headerValue(request: Request, name: string): string {

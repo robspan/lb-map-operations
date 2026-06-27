@@ -26,9 +26,9 @@ import { ActionConfigDialog, ActionConfigData } from './action-config-dialog';
 import { ContractPanel } from './contract-panel';
 import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
-import { OpsApiService } from './ops-api.service';
+import { OpsApiService, OpsUserSummary } from './ops-api.service';
 
-type OpsView = 'diagnose' | 'operations' | 'contract';
+type OpsView = 'diagnose' | 'operations' | 'contract' | 'users';
 
 const EXPERT_MODE_KEY = 'ops.expertMode';
 
@@ -135,6 +135,19 @@ export class App implements OnInit {
 
   loaded = false;
   loadError = '';
+  loginError = '';
+  loginUsername = '';
+  loginPassword = '';
+  users: OpsUserSummary[] = [];
+  userError = '';
+  newUser = {
+    username: '',
+    displayName: '',
+    email: '',
+    password: '',
+    role: 'first-level',
+  };
+  resetPasswords: Record<string, string> = {};
   runError = '';
   runningActionId = '';
   confirmingActionId = '';
@@ -170,12 +183,41 @@ export class App implements OnInit {
           }
         }
         this.loaded = true;
+        if (this.isAdmin()) {
+          this.loadUsers();
+        }
         this.changeDetector.detectChanges();
       },
       error: () => {
         this.loaded = true;
-        this.loadError =
-          'Keine gültige Support-Anmeldung. Lokal die API mit OPS_DEV_AUTH_USER starten.';
+        this.loadError = 'Anmeldung erforderlich.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  login(): void {
+    this.loginError = '';
+    this.api.login(this.loginUsername, this.loginPassword).subscribe({
+      next: () => {
+        this.loginPassword = '';
+        this.loadError = '';
+        this.load();
+      },
+      error: () => {
+        this.loginError = 'Anmeldung fehlgeschlagen.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  logout(): void {
+    this.api.logout().subscribe({
+      next: () => {
+        this.actor = '';
+        this.roles = [];
+        this.users = [];
+        this.loadError = 'Anmeldung erforderlich.';
         this.changeDetector.detectChanges();
       },
     });
@@ -184,6 +226,75 @@ export class App implements OnInit {
   setView(view: OpsView): void {
     this.activeView = view;
     this.confirmingActionId = '';
+    if (view === 'users' && this.isAdmin()) {
+      this.loadUsers();
+    }
+  }
+
+  isAdmin(): boolean {
+    return this.roles.includes('admin');
+  }
+
+  loadUsers(): void {
+    this.userError = '';
+    this.api.users().subscribe({
+      next: ({ users }) => {
+        this.users = users;
+        this.changeDetector.detectChanges();
+      },
+      error: () => {
+        this.userError = 'Benutzer konnten nicht geladen werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  createUser(): void {
+    this.userError = '';
+    this.api.createUser(this.newUser).subscribe({
+      next: () => {
+        this.newUser = {
+          username: '',
+          displayName: '',
+          email: '',
+          password: '',
+          role: 'first-level',
+        };
+        this.loadUsers();
+      },
+      error: () => {
+        this.userError = 'Benutzer konnte nicht angelegt werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  resetPassword(user: OpsUserSummary): void {
+    const password = this.resetPasswords[user.username];
+    if (!password) {
+      this.userError = 'Neues Passwort fehlt.';
+      return;
+    }
+    this.api.resetPassword(user.username, password).subscribe({
+      next: () => {
+        this.resetPasswords[user.username] = '';
+        this.loadUsers();
+      },
+      error: () => {
+        this.userError = 'Passwort konnte nicht gesetzt werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
+  }
+
+  setUserActive(user: OpsUserSummary, active: boolean): void {
+    this.api.setUserActive(user.username, active).subscribe({
+      next: () => this.loadUsers(),
+      error: () => {
+        this.userError = 'Benutzerstatus konnte nicht geändert werden.';
+        this.changeDetector.detectChanges();
+      },
+    });
   }
 
   get currentContract(): AppOperationsContract | undefined {

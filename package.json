@@ -7,6 +7,7 @@
     "lint": "nx run-many -t lint -p ops-contract,ops-api,ops-ui",
     "test": "nx run-many -t test -p ops-contract,ops-api,ops-ui",
     "test:e2e": "nx e2e ops-api-e2e",
+    "ops:hash-password": "node scripts/hash-password.mjs",
     "serve:api": "nx serve ops-api",
     "serve:ui": "nx serve ops-ui"
   },
@@ -35,6 +36,7 @@
     "@swc/helpers": "~0.5.18",
     "@types/jest": "~30.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
     "@typescript-eslint/utils": "^8.40.0",
     "angular-eslint": "^21.2.0",
     "eslint": "^9.8.0",
@@ -71,6 +73,7 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "axios": "^1.6.0",
+    "pg": "^8.22.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0"
   }
