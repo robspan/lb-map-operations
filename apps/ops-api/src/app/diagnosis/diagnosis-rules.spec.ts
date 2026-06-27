@@ -144,6 +144,44 @@ describe('diagnosis rules', () => {
     );
   });
 
+  it('ignores terminal Job pods when evaluating workload pod health', () => {
+    const report = buildDiagnosisReport(
+      contract(),
+      {
+        ...healthyFacts(),
+        pods: [
+          {
+            metadata: { name: 'varlens-123' },
+            status: {
+              phase: 'Running',
+              containerStatuses: [{ restartCount: 0 }],
+            },
+          },
+          {
+            metadata: {
+              name: 'varlens-deployed-smoke-old',
+              ownerReferences: [{ kind: 'Job' }],
+            },
+            status: { phase: 'Failed', containerStatuses: [] },
+          },
+          {
+            metadata: {
+              name: 'varlens-deployed-smoke-done',
+              ownerReferences: [{ kind: 'Job' }],
+            },
+            status: { phase: 'Succeeded', containerStatuses: [] },
+          },
+        ],
+      },
+      ['first-level'],
+      '2026-06-27T10:00:00.000Z',
+    );
+
+    expect(report.findings.map((finding) => finding.findingId)).not.toContain(
+      'pods-not-running',
+    );
+  });
+
   it('detects an unhealthy dependency from contract-defined metrics', () => {
     const report = buildDiagnosisReport(
       contract(),
@@ -313,7 +351,8 @@ function contract(): AppOperationsContract {
       namespace: 'varlens-test',
       deployment: 'varlens',
       serviceName: 'varlens',
-      podSelector: 'app.kubernetes.io/instance=varlens',
+      podSelector:
+        'app.kubernetes.io/instance=varlens,app.kubernetes.io/name=varlens,!platform.robspan.net/test',
       statelessRestartAllowed: true,
     },
     argo: {
@@ -333,7 +372,8 @@ function contract(): AppOperationsContract {
       grafanaDashboards: [],
     },
     smoke: {
-      jobLabelSelector: 'app.kubernetes.io/name=varlens',
+      jobLabelSelector:
+        'app.kubernetes.io/name=varlens,platform.robspan.net/test in (deployed-smoke,ops-smoke)',
       triggerAllowed: true,
       coreChecks: ['health-contract'],
     },

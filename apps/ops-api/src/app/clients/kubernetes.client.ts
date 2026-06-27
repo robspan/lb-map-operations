@@ -140,6 +140,7 @@ export class KubernetesClient {
           'app.kubernetes.io/component': 'ops-smoke',
           'platform.robspan.net/app': target.app,
           'platform.robspan.net/environment': target.environment,
+          'platform.robspan.net/test': 'ops-smoke',
         },
         annotations: {
           'ops.robspan.net/created-by': actor,

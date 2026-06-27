@@ -14,6 +14,14 @@ $blue: #1565c0;
   gap: 12px;
 }
 
+.topbar .mat-mdc-button {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.topbar .mat-mdc-button:hover {
+  color: #fff;
+}
+
 .brand {
   font-weight: 600;
   letter-spacing: 0.2px;
@@ -110,7 +118,13 @@ $blue: #1565c0;
 
 .admin-create {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+  grid-template-columns:
+    minmax(150px, 1fr)
+    minmax(150px, 1fr)
+    minmax(180px, 1.1fr)
+    minmax(180px, 1fr)
+    minmax(150px, 0.8fr)
+    auto;
   gap: 10px;
   align-items: start;
   margin-bottom: 16px;
@@ -140,19 +154,20 @@ $blue: #1565c0;
 
 .admin-table table {
   width: 100%;
+  min-width: 1120px;
   border-collapse: collapse;
   background: #fff;
   border: 1px solid $line;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .admin-table th,
 .admin-table td {
-  padding: 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid $line;
   text-align: left;
   vertical-align: middle;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .admin-table th {
@@ -165,14 +180,38 @@ $blue: #1565c0;
   border-bottom: 0;
 }
 
+.cell-strong {
+  font-weight: 600;
+  color: $ink;
+}
+
+.cell-email {
+  overflow-wrap: anywhere;
+}
+
+.cell-nowrap,
+.cell-action {
+  white-space: nowrap;
+}
+
+.cell-reset {
+  min-width: 280px;
+}
+
+.cell-action button {
+  min-width: 128px;
+}
+
 .inline-password {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
 
 .inline-password mat-form-field {
-  min-width: 160px;
+  min-width: 0;
+  width: 100%;
 }
 
 .status-pill {

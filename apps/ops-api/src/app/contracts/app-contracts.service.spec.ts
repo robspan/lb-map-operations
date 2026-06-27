@@ -24,9 +24,11 @@ describe('app contracts service', () => {
       'http://varlens.varlens-test.svc.cluster.local/readyz',
     );
     expect(contract.workload.podSelector).toBe(
-      'app.kubernetes.io/instance=varlens',
+      'app.kubernetes.io/instance=varlens,app.kubernetes.io/name=varlens,!platform.robspan.net/test',
     );
-    expect(contract.smoke.jobLabelSelector).toContain('ops-smoke');
+    expect(contract.smoke.jobLabelSelector).toBe(
+      'app.kubernetes.io/name=varlens,platform.robspan.net/test in (deployed-smoke,ops-smoke)',
+    );
     expect(contract.firstLevel.evidenceSources).toEqual([
       'http',
       'kubernetes',

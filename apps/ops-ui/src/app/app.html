@@ -152,7 +152,7 @@
       </button>
     </section>
 
-    <section class="admin-table">
+    <section class="admin-table users-table">
       <div class="admin-section-head">
         <h2>Benutzer</h2>
         <button mat-stroked-button type="button" (click)="loadUsers()">Aktualisieren</button>
@@ -172,16 +172,16 @@
         <tbody>
           @for (user of users; track user.username) {
             <tr>
-              <td>{{ user.username }}</td>
+              <td class="cell-strong">{{ user.username }}</td>
               <td>{{ user.displayName }}</td>
-              <td>{{ user.email || '-' }}</td>
-              <td>{{ roleLabel(user.role) }}</td>
-              <td>
+              <td class="cell-email">{{ user.email || '-' }}</td>
+              <td class="cell-nowrap">{{ roleLabel(user.role) }}</td>
+              <td class="cell-nowrap">
                 <span class="status-pill" [class.off]="!user.active">
                   {{ user.active ? 'aktiv' : 'deaktiviert' }}
                 </span>
               </td>
-              <td>
+              <td class="cell-reset">
                 <div class="inline-password">
                   <mat-form-field appearance="outline" subscriptSizing="dynamic">
                     <mat-label>Neues Passwort</mat-label>
@@ -197,7 +197,7 @@
                   </button>
                 </div>
               </td>
-              <td>
+              <td class="cell-action">
                 @if (user.active) {
                   <button mat-stroked-button type="button" (click)="setUserActive(user, false)">
                     Deaktivieren

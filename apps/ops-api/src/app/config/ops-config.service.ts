@@ -88,8 +88,8 @@ export class OpsConfigService {
       publicHealthUrl: publicBaseUrl
         ? joinUrl(publicBaseUrl, '/healthz')
         : undefined,
-      podSelector: `app.kubernetes.io/instance=${serviceName}`,
-      smokeJobLabelSelector: `app.kubernetes.io/name=${serviceName},app.kubernetes.io/component in (deployed-smoke,ops-smoke)`,
+      podSelector: `app.kubernetes.io/instance=${serviceName},app.kubernetes.io/name=${serviceName},!platform.robspan.net/test`,
+      smokeJobLabelSelector: `app.kubernetes.io/name=${serviceName},platform.robspan.net/test in (deployed-smoke,ops-smoke)`,
     };
   }
 }

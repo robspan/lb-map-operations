@@ -4,13 +4,20 @@
 html,
 body {
   height: 100%;
+  font-family:
+    Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 body {
   margin: 0;
   background: #eef3f6;
   color: #152027;
-  font-family: Roboto, Arial, sans-serif;
+  font-family:
+    Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --mat-sys-brand-font:
+    Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --mat-sys-plain-font:
+    Inter, Roboto, 'Helvetica Neue', Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * {

@@ -38,7 +38,12 @@ export interface DiagnosisFacts {
     };
   };
   readonly pods: readonly {
-    readonly metadata?: { readonly name?: string };
+    readonly metadata?: {
+      readonly name?: string;
+      readonly ownerReferences?: readonly {
+        readonly kind?: string;
+      }[];
+    };
     readonly status?: {
       readonly phase?: string;
       readonly containerStatuses?: readonly {
@@ -415,7 +420,8 @@ function addWorkloadFindings(
     return;
   }
 
-  if (!facts.pods.length) {
+  const workloadPods = facts.pods.filter(isWorkloadPod);
+  if (!workloadPods.length) {
     findings.push({
       findingId: 'no-pods-found',
       severity: 'critical',
@@ -434,7 +440,7 @@ function addWorkloadFindings(
     return;
   }
 
-  const nonRunningPods = facts.pods.filter(
+  const nonRunningPods = workloadPods.filter(
     (pod) => pod.status?.phase !== 'Running',
   );
   if (nonRunningPods.length) {
@@ -458,7 +464,7 @@ function addWorkloadFindings(
     });
   }
 
-  const restarts = facts.pods.reduce((sum, pod) => sum + restartCount(pod), 0);
+  const restarts = workloadPods.reduce((sum, pod) => sum + restartCount(pod), 0);
   if (restarts >= 3) {
     findings.push({
       findingId: 'pod-restart-spike',
@@ -773,6 +779,25 @@ function restartCount(pod: {
     (sum, status) => sum + (status.restartCount || 0),
     0,
   );
+}
+
+function isWorkloadPod(pod: {
+  readonly metadata?: {
+    readonly ownerReferences?: readonly {
+      readonly kind?: string;
+    }[];
+  };
+  readonly status?: { readonly phase?: string };
+}): boolean {
+  if (
+    pod.metadata?.ownerReferences?.some(
+      (owner) => owner.kind?.toLowerCase() === 'job',
+    )
+  ) {
+    return false;
+  }
+  const phase = pod.status?.phase;
+  return phase !== 'Succeeded' && phase !== 'Failed';
 }
 
 function compareCreatedAt(
