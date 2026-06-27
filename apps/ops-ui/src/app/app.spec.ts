@@ -8,17 +8,17 @@ const diagnostic = {
   id: 'endpoint-check',
   title: 'Endpoint prüfen',
   description: 'Health endpoint prüfen.',
-  role: 'first-level',
+  role: 'admin',
   kind: 'diagnostic',
   targetApp: 'varlens',
   inputs: [],
 };
 
 const diagnosticWithConfig = {
-  id: 'log-summary',
-  title: 'Log-Auszug',
-  description: 'Logs lesen.',
-  role: 'first-level',
+  id: 'platform-overview',
+  title: 'Betriebsüberblick',
+  description: 'Status zusammenfassen.',
+  role: 'admin',
   kind: 'diagnostic',
   targetApp: 'varlens',
   inputs: [
@@ -117,7 +117,7 @@ describe('App', () => {
     expect(nav).toBeTruthy();
     expect(nav?.textContent).toContain('Diagnose');
     expect(nav?.textContent).toContain('Operationen');
-    expect(nav?.textContent).toContain('Benutzer');
+    expect(nav?.textContent).toContain('Operations-Konten');
     expect(nav?.textContent).toContain('Audit');
   });
 
@@ -194,9 +194,28 @@ describe('App', () => {
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Benutzer anlegen');
+    expect(compiled.textContent).toContain('Operations-Konto anlegen');
+    expect(compiled.textContent).toContain('keine VarLens-Nutzerverwaltung');
     expect(compiled.textContent).toContain('ops-admin');
     expect(compiled.textContent).toContain('Operations Admin');
+  });
+
+  it('does not show first-level diagnostic actions on the admin operations page', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [
+        { ...diagnostic, id: 'platform-overview', title: 'Betriebsüberblick', role: 'admin' },
+        { ...diagnostic, id: 'escalation-bundle', title: 'Eskalationspaket', role: 'first-level' },
+        { ...diagnostic, id: 'smoke-result', title: 'Smoke-Status', role: 'first-level' },
+      ]
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Betriebsüberblick');
+    expect(compiled.textContent).not.toContain('Eskalationspaket');
+    expect(compiled.textContent).not.toContain('Smoke-Status');
   });
 
   it('renders recent audit events for admins', async () => {

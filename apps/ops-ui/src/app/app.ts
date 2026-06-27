@@ -166,7 +166,10 @@ export class App implements OnInit {
         this.actor = me.principal.email || me.principal.user;
         this.roles = me.principal.roles;
         this.diagnostics = actions.actions.filter(
-          (action) => action.kind === 'diagnostic' && action.id !== 'diagnose-target'
+          (action) =>
+            action.kind === 'diagnostic' &&
+            action.role === 'admin' &&
+            action.id !== 'observability-links'
         );
         this.mutations = actions.actions.filter((action) => action.kind === 'mutation');
         for (const action of actions.actions) {

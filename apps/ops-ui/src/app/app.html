@@ -70,7 +70,7 @@
             [attr.aria-current]="activeView === 'users' ? 'page' : null"
             (click)="setView('users')"
           >
-            Benutzer
+            Operations-Konten
           </button>
           <button
             type="button"
@@ -135,8 +135,8 @@
     }
     <section class="admin-create">
       <div class="admin-section-head">
-        <h2>Benutzer anlegen</h2>
-        <span class="muted">Lokale Operations-Konten, keine Plattform-Rollenänderung</span>
+        <h2>Operations-Konto anlegen</h2>
+        <span class="muted">Lokaler Login für dieses Tool, keine VarLens-Nutzerverwaltung</span>
       </div>
       <mat-form-field appearance="outline">
         <mat-label>Benutzer</mat-label>
@@ -168,7 +168,7 @@
 
     <section class="admin-table users-table">
       <div class="admin-section-head">
-        <h2>Benutzer</h2>
+        <h2>Operations-Konten</h2>
         <button mat-stroked-button type="button" (click)="loadUsers()">Aktualisieren</button>
       </div>
       <table aria-label="Benutzer">
@@ -297,8 +297,8 @@
     <div class="actions" aria-label="Operationen">
       <section class="group">
         <header class="group-head">
-          <h2>Diagnose-Aktionen</h2>
-          <span class="group-note">nur lesend</span>
+          <h2>Status prüfen</h2>
+          <span class="group-note">Admin</span>
           <app-info [text]="uiHelp.diagnose" />
         </header>
         @for (action of diagnostics; track action.id) {
@@ -340,6 +340,8 @@
               Starten
             </button>
           </article>
+        } @empty {
+          <p class="muted empty">Keine adminfähigen Statusabfragen konfiguriert.</p>
         }
       </section>
 
@@ -433,7 +435,7 @@
             </div>
           </div>
         } @else {
-          <p class="muted empty">Noch keine Aktion ausgeführt. Wähle links eine Diagnose.</p>
+          <p class="muted empty">Noch keine Aktion ausgeführt. Wähle links eine Operation.</p>
         }
       </section>
 
