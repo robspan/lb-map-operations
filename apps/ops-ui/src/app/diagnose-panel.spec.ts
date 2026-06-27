@@ -1,9 +1,6 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import {
-  HttpTestingController,
-  provideHttpClientTesting,
-} from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { DiagnosePanel } from './diagnose-panel';
 
@@ -82,6 +79,117 @@ function runWithoutFindings() {
       ],
     },
   };
+}
+
+function repairStreamResponse(result: unknown) {
+  const phases = [
+    {
+      type: 'phase',
+      runId: 'repair-1',
+      phase: {
+        phaseId: 'before-scan',
+        label: 'Aktuellen Zustand prüfen',
+        status: 'succeeded',
+        detail: '1 Befund(e).',
+        estimatedSeconds: 15,
+      },
+    },
+    {
+      type: 'phase',
+      runId: 'repair-1',
+      phase: {
+        phaseId: 'repair-argo-sync',
+        label: 'Reparatur ausführen: GitOps-Abgleich',
+        status: 'succeeded',
+        detail: 'Sync angefordert.',
+        estimatedSeconds: 30,
+      },
+    },
+    {
+      type: 'phase',
+      runId: 'repair-1',
+      phase: {
+        phaseId: 'wait-gitops',
+        label: 'GitOps-Abgleich abwarten',
+        status: 'succeeded',
+        detail: 'ArgoCD meldet keinen laufenden Sync mehr.',
+        estimatedSeconds: 90,
+      },
+    },
+    {
+      type: 'phase',
+      runId: 'repair-1',
+      phase: {
+        phaseId: 'after-scan',
+        label: 'Nach Reparatur erneut prüfen',
+        status: 'succeeded',
+        detail: '0 Befund(e).',
+        estimatedSeconds: 15,
+      },
+    },
+  ];
+  const events = [
+    {
+      type: 'started',
+      runId: 'repair-1',
+      targetApp: 'varlens',
+      targetEnvironment: 'test',
+      startedAt: new Date().toISOString(),
+      estimatedSeconds: 120,
+    },
+    ...phases,
+    { type: 'result', runId: 'repair-1', result },
+  ];
+  const body = events
+    .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+    .join('');
+  const encoded = new TextEncoder().encode(body);
+  let sent = false;
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) {
+            return { done: true, value: undefined };
+          }
+          sent = true;
+          return { done: false, value: encoded };
+        },
+      }),
+    },
+  };
+}
+
+function mockFetch(response: unknown) {
+  const originalFetch = globalThis.fetch;
+  const fetchMock = jest.fn().mockResolvedValue(response);
+  Object.defineProperty(globalThis, 'fetch', {
+    configurable: true,
+    writable: true,
+    value: fetchMock,
+  });
+  return {
+    fetchMock,
+    restore: () => {
+      if (originalFetch) {
+        Object.defineProperty(globalThis, 'fetch', {
+          configurable: true,
+          writable: true,
+          value: originalFetch,
+        });
+      } else {
+        delete (globalThis as { fetch?: unknown }).fetch;
+      }
+    },
+  };
+}
+
+async function settleUi(fixture: ComponentFixture<DiagnosePanel>) {
+  await fixture.whenStable();
+  await Promise.resolve();
+  fixture.detectChanges();
 }
 
 describe('DiagnosePanel', () => {
@@ -184,51 +292,92 @@ describe('DiagnosePanel', () => {
 
   it('runs the diagnosis repair endpoint and switches to the after-scan result', async () => {
     const fixture = create(runWithFinding());
-    const http = TestBed.inject(HttpTestingController);
     const compiled = fixture.nativeElement as HTMLElement;
+    const { fetchMock, restore } = mockFetch(
+      repairStreamResponse({
+        beforeRun: runWithFinding(),
+        repairRuns: [
+          {
+            runId: 'r9',
+            actionId: 'argo-sync',
+            status: 'succeeded',
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            targetApp: 'varlens',
+            targetEnvironment: 'test',
+            actor: 'admin',
+            role: 'admin',
+            summary: 'Sync angefordert.',
+            evidence: [],
+          },
+        ],
+        afterRun: runWithoutFindings(),
+        resolvedFindingIds: ['argocd-out-of-sync'],
+        remainingFindingIds: [],
+        summary: 'Automatische Reparatur abgeschlossen: 1 Befund(e) behoben.',
+      }),
+    );
 
     (
       compiled.querySelector('[data-testid="repair-all"]') as HTMLButtonElement
     ).click();
-    fixture.detectChanges();
+    await settleUi(fixture);
 
-    http.expectOne('/api/diagnosis/repair').flush({
-      beforeRun: runWithFinding(),
-      repairRuns: [
-        {
-          runId: 'r9',
-          actionId: 'argo-sync',
-          status: 'succeeded',
-          startedAt: new Date().toISOString(),
-          finishedAt: new Date().toISOString(),
-          targetApp: 'varlens',
-          targetEnvironment: 'test',
-          actor: 'admin',
-          role: 'admin',
-          summary: 'Sync angefordert.',
-          evidence: [],
-        },
-      ],
-      afterRun: runWithoutFindings(),
-      resolvedFindingIds: ['argocd-out-of-sync'],
-      remainingFindingIds: [],
-      summary: 'Automatische Reparatur abgeschlossen: 1 Befund(e) behoben.',
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/diagnosis/repair/stream',
+      expect.objectContaining({ method: 'POST' }),
+    );
     expect(compiled.textContent).toContain('1 Befund(e) behoben');
     expect(compiled.textContent).toContain(
       'Keine eindeutige Standardstörung erkannt.',
     );
     expect(compiled.textContent).toContain('GitOps-Abgleich: Erfolg');
-    http.verify();
+    expect(compiled.textContent).toContain('GitOps-Abgleich abwarten');
+    expect(compiled.querySelector('[data-testid="repair-progress"]')).toBeTruthy();
+    restore();
   });
 
   it('shows the same single repair control for first-level users', async () => {
     const fixture = create(runWithFinding('first-level'), ['first-level']);
-    const http = TestBed.inject(HttpTestingController);
     const compiled = fixture.nativeElement as HTMLElement;
+    const { restore } = mockFetch(
+      repairStreamResponse({
+        beforeRun: runWithFinding('first-level'),
+        repairRuns: [
+          {
+            runId: 'r10',
+            actionId: 'argo-sync',
+            status: 'succeeded',
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            targetApp: 'varlens',
+            targetEnvironment: 'test',
+            actor: 'support',
+            role: 'first-level',
+            summary: 'Sync angefordert.',
+            evidence: [],
+          },
+        ],
+        afterRun: {
+          ...runWithFinding('first-level'),
+          runId: 'd3',
+          diagnosis: {
+            ...runWithFinding('first-level').diagnosis,
+            findings: [
+              {
+                ...runWithFinding('first-level').diagnosis.findings[0],
+                findingId: 'liveness-failing',
+                summary: 'Liveness-Endpunkt antwortet nicht erfolgreich.',
+              },
+            ],
+          },
+        },
+        resolvedFindingIds: ['argocd-out-of-sync'],
+        remainingFindingIds: ['liveness-failing'],
+        summary:
+          'Automatische Reparatur teilweise erfolgreich: 1 Befund(e) behoben, 1 weiterhin sichtbar.',
+      }),
+    );
 
     expect(compiled.querySelector('[data-testid="repair-all"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="remedy-run"]')).toBeNull();
@@ -238,51 +387,12 @@ describe('DiagnosePanel', () => {
     (
       compiled.querySelector('[data-testid="repair-all"]') as HTMLButtonElement
     ).click();
-    fixture.detectChanges();
-
-    http.expectOne('/api/diagnosis/repair').flush({
-      beforeRun: runWithFinding('first-level'),
-      repairRuns: [
-        {
-          runId: 'r10',
-          actionId: 'argo-sync',
-          status: 'succeeded',
-          startedAt: new Date().toISOString(),
-          finishedAt: new Date().toISOString(),
-          targetApp: 'varlens',
-          targetEnvironment: 'test',
-          actor: 'support',
-          role: 'first-level',
-          summary: 'Sync angefordert.',
-          evidence: [],
-        },
-      ],
-      afterRun: {
-        ...runWithFinding('first-level'),
-        runId: 'd3',
-        diagnosis: {
-          ...runWithFinding('first-level').diagnosis,
-          findings: [
-            {
-              ...runWithFinding('first-level').diagnosis.findings[0],
-              findingId: 'liveness-failing',
-              summary: 'Liveness-Endpunkt antwortet nicht erfolgreich.',
-            },
-          ],
-        },
-      },
-      resolvedFindingIds: ['argocd-out-of-sync'],
-      remainingFindingIds: ['liveness-failing'],
-      summary:
-        'Automatische Reparatur teilweise erfolgreich: 1 Befund(e) behoben, 1 weiterhin sichtbar.',
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settleUi(fixture);
 
     expect(compiled.textContent).toContain('teilweise erfolgreich');
     expect(compiled.textContent).toContain('weiterhin sichtbar');
     expect(compiled.textContent).not.toContain('Vorgeschlagene Abhilfe');
-    http.verify();
+    restore();
   });
 
   it('does not show a repair button when the diagnosis has no repairable issue', () => {

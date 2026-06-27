@@ -117,6 +117,26 @@ export class OperationsController {
     return this.runner.repairDiagnosis(body, principal);
   }
 
+  @Post('diagnosis/repair/stream')
+  @HttpCode(200)
+  async streamDiagnosisRepair(
+    @Body() body: ActionRunRequest,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const principal = await this.identity.principalFromRequest(request);
+    response.setHeader('content-type', 'text/event-stream; charset=utf-8');
+    response.setHeader('cache-control', 'no-cache, no-transform');
+    response.setHeader('connection', 'keep-alive');
+    response.flushHeaders?.();
+
+    await this.runner.streamDiagnosisRepair(body, principal, (event) => {
+      response.write(`event: ${event.type}\n`);
+      response.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+    response.end();
+  }
+
   @Get('runs/:runId')
   async runStatus(
     @Param('runId') runId: string,

@@ -545,6 +545,27 @@ export class App implements OnInit {
     return this.actionTitles[actionId] || actionId;
   }
 
+  runningActionTitle(): string {
+    return this.runningActionId ? this.titleFor(this.runningActionId) : '';
+  }
+
+  runningActionDurationHint(): string {
+    const actionId = this.runningActionId;
+    if (actionId === 'argo-sync') {
+      return 'GitOps-Abgleich läuft. Meist 30 bis 120 Sekunden.';
+    }
+    if (actionId === 'rollout-restart') {
+      return 'App-Neustart läuft. Meist 30 bis 90 Sekunden.';
+    }
+    if (actionId.startsWith('varlens-user-')) {
+      return 'Nutzeroperation läuft. Meist 10 bis 60 Sekunden.';
+    }
+    if (this.actionById(actionId)?.kind === 'diagnostic') {
+      return 'Prüfung läuft. Meist 5 bis 20 Sekunden.';
+    }
+    return 'Aktion läuft. Meist unter 30 Sekunden.';
+  }
+
   statusLabel(status: ActionStatus): string {
     return STATUS_LABELS[status] || status;
   }
@@ -610,6 +631,12 @@ export class App implements OnInit {
           this.changeDetector.detectChanges();
         },
       });
+  }
+
+  private actionById(actionId: string): OperationAction | undefined {
+    return [...this.diagnostics, ...this.mutations].find(
+      (action) => action.id === actionId
+    );
   }
 
   private missingRequiredInputs(action: OperationAction): boolean {

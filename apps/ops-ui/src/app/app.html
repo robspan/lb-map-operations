@@ -452,6 +452,15 @@
 
             <section class="result">
               <h2 class="section-title">Ergebnis <app-info [text]="uiHelp.result" /></h2>
+              @if (runningActionId) {
+                <div class="result-card" data-testid="running-action">
+                  <div>
+                    <strong>{{ runningActionTitle() }}</strong>
+                    <p class="muted">{{ runningActionDurationHint() }}</p>
+                  </div>
+                  <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+                </div>
+              }
               @if (selectedRun) {
                 <div class="result-card">
                   <div class="result-head">

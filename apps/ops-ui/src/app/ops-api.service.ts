@@ -6,6 +6,7 @@ import {
   ActionsResponse,
   ContractsResponse,
   DiagnosisRepairResponse,
+  DiagnosisRepairStreamEvent,
   DiagnosisStreamEvent,
   MeResponse,
   TargetApp,
@@ -100,69 +101,85 @@ export class OpsApiService {
     );
   }
 
+  streamRepairDiagnosis(
+    request: ActionRunRequest,
+  ): Observable<DiagnosisRepairStreamEvent> {
+    return streamEvents<DiagnosisRepairStreamEvent>(
+      '/api/diagnosis/repair/stream',
+      request,
+    );
+  }
+
   /**
    * Streams the live diagnosis via Server-Sent Events. HttpClient does not handle SSE,
    * so we use fetch + a ReadableStream reader and parse the `data:` lines.
    */
   streamDiagnose(request: ActionRunRequest): Observable<DiagnosisStreamEvent> {
-    return new Observable<DiagnosisStreamEvent>((subscriber) => {
-      const controller = new AbortController();
+    return streamEvents<DiagnosisStreamEvent>(
+      '/api/actions/diagnose-target/runs/stream',
+      request,
+    );
+  }
+}
 
-      (async () => {
-        try {
-          const response = await fetch(
-            '/api/actions/diagnose-target/runs/stream',
-            {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(request),
-              signal: controller.signal,
-            },
-          );
-          if (!response.ok || !response.body) {
-            throw new Error(`HTTP ${response.status}`);
+function streamEvents<T>(
+  path: string,
+  request: ActionRunRequest,
+): Observable<T> {
+  return new Observable<T>((subscriber) => {
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const response = await fetch(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
           }
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          for (;;) {
-            const { value, done } = await reader.read();
-            if (done) {
-              break;
-            }
-            buffer += decoder.decode(value, { stream: true });
-            let boundary = buffer.indexOf('\n\n');
-            while (boundary !== -1) {
-              const block = buffer.slice(0, boundary);
-              buffer = buffer.slice(boundary + 2);
-              const dataLine = block
-                .split('\n')
-                .find((line) => line.startsWith('data:'));
-              if (dataLine) {
-                try {
-                  subscriber.next(JSON.parse(dataLine.slice(5).trim()));
-                } catch {
-                  // ignore malformed event
-                }
+          buffer += decoder.decode(value, { stream: true });
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary !== -1) {
+            const block = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const dataLine = block
+              .split('\n')
+              .find((line) => line.startsWith('data:'));
+            if (dataLine) {
+              try {
+                subscriber.next(JSON.parse(dataLine.slice(5).trim()));
+              } catch {
+                // ignore malformed event
               }
-              boundary = buffer.indexOf('\n\n');
             }
-          }
-          subscriber.complete();
-        } catch (error) {
-          if (controller.signal.aborted) {
-            subscriber.complete();
-          } else {
-            subscriber.error(error);
+            boundary = buffer.indexOf('\n\n');
           }
         }
-      })();
+        subscriber.complete();
+      } catch (error) {
+        if (controller.signal.aborted) {
+          subscriber.complete();
+        } else {
+          subscriber.error(error);
+        }
+      }
+    })();
 
-      return () => controller.abort();
-    });
-  }
+    return () => controller.abort();
+  });
 }
 
 export interface OpsUserSummary {

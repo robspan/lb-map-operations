@@ -11,8 +11,10 @@ import {
   ActionRunResult,
   AppOperationsContract,
   DiagnosisFinding,
+  DiagnosisRepairPhaseEvent,
   DiagnosisReport,
   DiagnosisRepairResponse,
+  DiagnosisRepairStreamEvent,
   DiagnosisStepEvent,
   DiagnosisStreamEvent,
   OpsPrincipal,
@@ -177,6 +179,9 @@ type Captured<T> = {
 };
 
 type DiagnosisProgress = (step: DiagnosisStepEvent) => Promise<void> | void;
+type DiagnosisRepairProgress = (
+  phase: DiagnosisRepairPhaseEvent,
+) => Promise<void> | void;
 
 type AutoRepairStep = {
   readonly actionId: 'argo-sync' | 'rollout-restart';
@@ -186,6 +191,7 @@ type AutoRepairStep = {
 };
 
 const DIAGNOSIS_STEP_SPREAD_MS = 300;
+const REPAIR_ESTIMATE_SECONDS = 120;
 const WORKSPACE_DB_URLS_SECRET = 'varlens-workspace-db-urls';
 const AUTO_REPAIR_ACTION_IDS = new Set(['argo-sync', 'rollout-restart']);
 
@@ -594,6 +600,45 @@ export class ActionRunnerService {
     request: ActionRunRequest,
     principal: OpsPrincipal,
   ): Promise<DiagnosisRepairResponse> {
+    const { target } = this.prepareDiagnosisRepair(request, principal);
+    return this.executeDiagnosisRepair(request, target, principal);
+  }
+
+  async streamDiagnosisRepair(
+    request: ActionRunRequest,
+    principal: OpsPrincipal,
+    emit: (event: DiagnosisRepairStreamEvent) => void,
+  ): Promise<void> {
+    const { target } = this.prepareDiagnosisRepair(request, principal);
+    const runId = randomUUID();
+    const startedAt = new Date().toISOString();
+
+    emit({
+      type: 'started',
+      runId,
+      targetApp: target.app,
+      targetEnvironment: target.environment,
+      startedAt,
+      estimatedSeconds: REPAIR_ESTIMATE_SECONDS,
+    });
+
+    try {
+      const result = await this.executeDiagnosisRepair(
+        request,
+        target,
+        principal,
+        (phase) => emit({ type: 'phase', runId, phase }),
+      );
+      emit({ type: 'result', runId, result });
+    } catch (error) {
+      emit({ type: 'error', runId, message: message(error) });
+    }
+  }
+
+  private prepareDiagnosisRepair(
+    request: ActionRunRequest,
+    principal: OpsPrincipal,
+  ): { readonly target: TargetConfig } {
     const diagnosisAction = actionById('diagnose-target');
     if (!diagnosisAction) {
       throw new NotFoundException('unknown action: diagnose-target');
@@ -606,19 +651,78 @@ export class ActionRunnerService {
       request.targetApp || diagnosisAction.targetApp,
       request.targetEnvironment,
     );
+    return { target };
+  }
+
+  private async executeDiagnosisRepair(
+    request: ActionRunRequest,
+    target: TargetConfig,
+    principal: OpsPrincipal,
+    progress?: DiagnosisRepairProgress,
+  ): Promise<DiagnosisRepairResponse> {
+    await progress?.({
+      phaseId: 'before-scan',
+      label: 'Aktuellen Zustand prüfen',
+      status: 'running',
+      estimatedSeconds: 15,
+    });
     const beforeRun = await this.run('diagnose-target', request, principal);
+    await progress?.({
+      phaseId: 'before-scan',
+      label: 'Aktuellen Zustand prüfen',
+      status: beforeRun.status === 'succeeded' ? 'succeeded' : 'failed',
+      detail: beforeRun.message || beforeRun.summary,
+      estimatedSeconds: 15,
+    });
+
     const repairPlan = autoRepairPlan(beforeRun.diagnosis?.findings ?? []);
     const repairRuns: ActionRunResult[] = [];
 
     for (const step of repairPlan) {
+      const repairPhaseId = `repair-${step.actionId}`;
+      await progress?.({
+        phaseId: repairPhaseId,
+        label: `Reparatur ausführen: ${repairPhaseLabel(step.actionId)}`,
+        status: 'running',
+        estimatedSeconds: repairPhaseEstimateSeconds(step.actionId),
+      });
       const repairRun = await this.runAutoRepair(step, target, principal);
       repairRuns.push(repairRun);
+      await progress?.({
+        phaseId: repairPhaseId,
+        label: `Reparatur ausführen: ${repairPhaseLabel(step.actionId)}`,
+        status: repairRun.status === 'succeeded' ? 'succeeded' : 'failed',
+        detail: repairRun.message || repairRun.summary,
+        estimatedSeconds: repairPhaseEstimateSeconds(step.actionId),
+      });
       if (step.actionId === 'argo-sync' && repairRun.status === 'succeeded') {
-        await this.waitForArgoToSettle(target);
+        await progress?.({
+          phaseId: 'wait-gitops',
+          label: 'GitOps-Abgleich abwarten',
+          status: 'running',
+          detail: 'Kann bis zu 90 Sekunden dauern.',
+          estimatedSeconds: 90,
+        });
+        const settled = await this.waitForArgoToSettle(target);
+        await progress?.({
+          phaseId: 'wait-gitops',
+          label: 'GitOps-Abgleich abwarten',
+          status: settled ? 'succeeded' : 'failed',
+          detail: settled
+            ? 'ArgoCD meldet keinen laufenden Sync mehr.'
+            : 'Wartezeit erreicht; die Nachprüfung entscheidet.',
+          estimatedSeconds: 90,
+        });
       }
     }
 
     if (!repairRuns.length) {
+      await progress?.({
+        phaseId: 'repair-plan',
+        label: 'Reparaturmöglichkeit prüfen',
+        status: 'skipped',
+        detail: 'Keine freigegebene automatische Reparatur gefunden.',
+      });
       return {
         beforeRun,
         repairRuns,
@@ -630,7 +734,20 @@ export class ActionRunnerService {
       };
     }
 
+    await progress?.({
+      phaseId: 'after-scan',
+      label: 'Nach Reparatur erneut prüfen',
+      status: 'running',
+      estimatedSeconds: 15,
+    });
     const afterRun = await this.run('diagnose-target', request, principal);
+    await progress?.({
+      phaseId: 'after-scan',
+      label: 'Nach Reparatur erneut prüfen',
+      status: afterRun.status === 'succeeded' ? 'succeeded' : 'failed',
+      detail: afterRun.message || afterRun.summary,
+      estimatedSeconds: 15,
+    });
     const afterIds = new Set(actionableFindingIds(afterRun));
     const beforeIds = actionableFindingIds(beforeRun);
     const resolvedFindingIds = beforeIds.filter((id) => !afterIds.has(id));
@@ -885,7 +1002,7 @@ export class ActionRunnerService {
     }
   }
 
-  private async waitForArgoToSettle(target: TargetConfig): Promise<void> {
+  private async waitForArgoToSettle(target: TargetConfig): Promise<boolean> {
     const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
       try {
@@ -897,13 +1014,14 @@ export class ActionRunnerService {
           phase !== 'Running' &&
           phase !== 'Pending'
         ) {
-          return;
+          return true;
         }
       } catch {
         // The follow-up diagnosis is the source of truth; waiting is best effort.
       }
       await sleep(2_000);
     }
+    return false;
   }
 
   async varlensUsers(
@@ -2148,6 +2266,20 @@ function repairSummary(resolvedCount: number, remainingCount: number): string {
     return `Automatische Reparatur teilweise erfolgreich: ${resolvedCount} Befund(e) behoben, ${remainingCount} weiterhin sichtbar.`;
   }
   return 'Automatische Reparatur ausgeführt, aber die Störung ist weiterhin sichtbar.';
+}
+
+function repairPhaseLabel(actionId: AutoRepairStep['actionId']): string {
+  if (actionId === 'argo-sync') {
+    return 'GitOps-Abgleich';
+  }
+  return 'App-Neustart';
+}
+
+function repairPhaseEstimateSeconds(actionId: AutoRepairStep['actionId']): number {
+  if (actionId === 'argo-sync') {
+    return 30;
+  }
+  return 60;
 }
 
 function validateEnvironment(value: string): TargetEnvironment {

@@ -66,6 +66,32 @@
       <div>
         <h4>Automatische Reparatur</h4>
         <p>{{ repairSummary() }}</p>
+        @if (repairing || repairPhases.length) {
+        <div class="repair-progress" data-testid="repair-progress">
+          <div class="repair-progress-head">
+            <strong>{{ repairProgressText() }}</strong>
+            <span class="muted">{{ repairDurationHint() }}</span>
+          </div>
+          <mat-progress-bar
+            mode="determinate"
+            [value]="repairProgressValue()"
+          ></mat-progress-bar>
+          @if (repairPhases.length) {
+          <ul>
+            @for (phase of repairPhases; track phase.phaseId) {
+            <li class="step step-{{ phase.status }}">
+              <span class="step-icon" aria-hidden="true"></span>
+              <span class="step-label">{{ phase.label }}</span>
+              <span class="step-status">{{ stepStatusLabel(phase.status) }}</span>
+              @if (phase.detail) {
+              <span class="muted step-detail">{{ phase.detail }}</span>
+              }
+            </li>
+            }
+          </ul>
+          }
+        </div>
+        }
         @if (repairRunLabels()) {
         <p class="muted repair-runs">{{ repairRunLabels() }}</p>
         }

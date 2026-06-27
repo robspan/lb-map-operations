@@ -39,6 +39,12 @@ export type RemedyRisk = 'none' | 'low' | 'medium';
 
 export type DiagnosisStreamEventType = 'started' | 'step' | 'result' | 'error';
 
+export type DiagnosisRepairStreamEventType =
+  | 'started'
+  | 'phase'
+  | 'result'
+  | 'error';
+
 export type DiagnosisStepStatus =
   | 'running'
   | 'succeeded'
@@ -252,6 +258,14 @@ export interface DiagnosisStepEvent {
   readonly detail?: string;
 }
 
+export interface DiagnosisRepairPhaseEvent {
+  readonly phaseId: string;
+  readonly label: string;
+  readonly status: DiagnosisStepStatus;
+  readonly detail?: string;
+  readonly estimatedSeconds?: number;
+}
+
 export type DiagnosisStreamEvent =
   | {
       readonly type: 'started';
@@ -269,6 +283,31 @@ export type DiagnosisStreamEvent =
       readonly type: 'result';
       readonly runId: string;
       readonly run: ActionRunResult;
+    }
+  | {
+      readonly type: 'error';
+      readonly runId: string;
+      readonly message: string;
+    };
+
+export type DiagnosisRepairStreamEvent =
+  | {
+      readonly type: 'started';
+      readonly runId: string;
+      readonly targetApp: TargetApp;
+      readonly targetEnvironment: TargetEnvironment;
+      readonly startedAt: string;
+      readonly estimatedSeconds: number;
+    }
+  | {
+      readonly type: 'phase';
+      readonly runId: string;
+      readonly phase: DiagnosisRepairPhaseEvent;
+    }
+  | {
+      readonly type: 'result';
+      readonly runId: string;
+      readonly result: DiagnosisRepairResponse;
     }
   | {
       readonly type: 'error';

@@ -14,6 +14,7 @@ import {
   ActionRunResult,
   DiagnosisConfidence,
   DiagnosisFinding,
+  DiagnosisRepairPhaseEvent,
   DiagnosisRepairResponse,
   DiagnosisSeverity,
   DiagnosisStepEvent,
@@ -76,8 +77,11 @@ export class DiagnosePanel implements OnDestroy {
   repairing = false;
   repairResult?: DiagnosisRepairResponse;
   repairError = '';
+  repairPhases: DiagnosisRepairPhaseEvent[] = [];
+  repairEstimatedSeconds = 0;
 
   private streamSub?: Subscription;
+  private repairSub?: Subscription;
 
   /** Staggered reveal: incoming probe events are buffered and applied one per tick
    *  so the scan reads as real work instead of flipping green all at once. */
@@ -107,6 +111,8 @@ export class DiagnosePanel implements OnDestroy {
     this.clearDrain();
     this.repairResult = undefined;
     this.repairError = '';
+    this.repairPhases = [];
+    this.repairEstimatedSeconds = 0;
     this.running = true;
     this.streamSub?.unsubscribe();
     this.streamSub = this.api
@@ -212,6 +218,8 @@ export class DiagnosePanel implements OnDestroy {
     this.selectedRun = run;
     this.repairResult = undefined;
     this.repairError = '';
+    this.repairPhases = [];
+    this.repairEstimatedSeconds = 0;
     this.expandedFindings.clear();
   }
 
@@ -249,8 +257,11 @@ export class DiagnosePanel implements OnDestroy {
     this.repairing = true;
     this.repairError = '';
     this.repairResult = undefined;
-    this.api
-      .repairDiagnosis({
+    this.repairPhases = [];
+    this.repairEstimatedSeconds = 0;
+    this.repairSub?.unsubscribe();
+    this.repairSub = this.api
+      .streamRepairDiagnosis({
         targetApp: this.app,
         targetEnvironment: this.environment,
         inputs: {},
@@ -262,16 +273,21 @@ export class DiagnosePanel implements OnDestroy {
         }),
       )
       .subscribe({
-        next: (result) => {
-          this.repairResult = result;
-          this.selectedRun = result.afterRun;
-          this.runs = [result.afterRun, result.beforeRun, ...this.runs]
-            .filter(
-              (run, index, all) =>
-                all.findIndex((item) => item.runId === run.runId) === index,
-            )
-            .slice(0, 15);
-          this.expandedFindings.clear();
+        next: (event) => {
+          switch (event.type) {
+            case 'started':
+              this.repairEstimatedSeconds = event.estimatedSeconds;
+              break;
+            case 'phase':
+              this.upsertRepairPhase(event.phase);
+              break;
+            case 'result':
+              this.applyRepairResult(event.result);
+              break;
+            case 'error':
+              this.repairError = event.message;
+              break;
+          }
           this.changeDetector.detectChanges();
         },
         error: () => {
@@ -309,6 +325,43 @@ export class DiagnosePanel implements OnDestroy {
       return this.repairError;
     }
     return 'Führt die freigegebene Reparatur aus und prüft danach automatisch erneut.';
+  }
+
+  repairDurationHint(): string {
+    const seconds = this.repairEstimatedSeconds || 120;
+    if (this.repairing) {
+      return `Läuft. Typisch 30 bis ${seconds} Sekunden, bei GitOps-Warten bis etwa 2 Minuten.`;
+    }
+    return `Dauert meist 30 bis ${seconds} Sekunden. Danach startet automatisch eine neue Diagnose.`;
+  }
+
+  repairProgressValue(): number {
+    if (this.repairResult) {
+      return 100;
+    }
+    const relevantPhases = this.repairPhases.filter(
+      (phase) => phase.status !== 'skipped',
+    );
+    if (!this.repairing || !relevantPhases.length) {
+      return 0;
+    }
+    const completed = relevantPhases.filter((phase) =>
+      ['succeeded', 'failed'].includes(phase.status),
+    ).length;
+    return Math.min(
+      95,
+      Math.max(8, Math.round((completed / Math.max(relevantPhases.length, 4)) * 100)),
+    );
+  }
+
+  repairProgressText(): string {
+    if (this.repairResult) {
+      return 'Abgeschlossen';
+    }
+    const active = [...this.repairPhases]
+      .reverse()
+      .find((phase) => phase.status === 'running');
+    return active ? active.label : 'Reparatur wird vorbereitet';
   }
 
   repairResultClass(): string {
@@ -361,6 +414,7 @@ export class DiagnosePanel implements OnDestroy {
 
   ngOnDestroy(): void {
     this.streamSub?.unsubscribe();
+    this.repairSub?.unsubscribe();
     this.clearDrain();
   }
 
@@ -378,6 +432,34 @@ export class DiagnosePanel implements OnDestroy {
       next[index] = step;
       this.steps = next;
     }
+  }
+
+  private upsertRepairPhase(phase: DiagnosisRepairPhaseEvent): void {
+    if (phase.status === 'skipped') {
+      return;
+    }
+    const index = this.repairPhases.findIndex(
+      (existing) => existing.phaseId === phase.phaseId,
+    );
+    if (index === -1) {
+      this.repairPhases = [...this.repairPhases, phase];
+    } else {
+      const next = [...this.repairPhases];
+      next[index] = phase;
+      this.repairPhases = next;
+    }
+  }
+
+  private applyRepairResult(result: DiagnosisRepairResponse): void {
+    this.repairResult = result;
+    this.selectedRun = result.afterRun;
+    this.runs = [result.afterRun, result.beforeRun, ...this.runs]
+      .filter(
+        (run, index, all) =>
+          all.findIndex((item) => item.runId === run.runId) === index,
+      )
+      .slice(0, 15);
+    this.expandedFindings.clear();
   }
 }
 
