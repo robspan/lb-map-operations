@@ -13,10 +13,14 @@ import { AppContractsService } from './contracts/app-contracts.service';
 import { AuditController } from './controllers/audit.controller';
 import { AuthController } from './controllers/auth.controller';
 import { HealthController } from './controllers/health.controller';
+import { IdentityController } from './controllers/identity.controller';
 import { MetricsController } from './controllers/metrics.controller';
 import { OperationsController } from './controllers/operations.controller';
 import { DatabaseService } from './database/database.service';
+import { EntitlementsService } from './identity/entitlements.service';
 import { IdentityService } from './identity/identity.service';
+import { KeycloakAdminService } from './identity/keycloak-admin.service';
+import { VarLensProvisioningService } from './identity/varlens-provisioning.service';
 import { MetricsService } from './observability/metrics.service';
 
 @Module({
@@ -25,6 +29,7 @@ import { MetricsService } from './observability/metrics.service';
     AuditController,
     AuthController,
     HealthController,
+    IdentityController,
     MetricsController,
     OperationsController,
   ],
@@ -39,9 +44,12 @@ import { MetricsService } from './observability/metrics.service';
     LokiClient,
     OpsConfigService,
     PrometheusClient,
+    EntitlementsService,
     IdentityService,
+    KeycloakAdminService,
     MetricsService,
     RunStoreService,
+    VarLensProvisioningService,
   ],
 })
 export class AppModule {

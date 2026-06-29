@@ -63,6 +63,14 @@ export class OpsConfigService {
     process.env.NODE_ENV === 'production' ? '__Host-lb-map-ops.sid' : 'lb-map-ops.sid';
   readonly sessionMaxAgeSeconds = Number(process.env.OPS_SESSION_MAX_AGE_SECONDS || 60 * 60 * 4);
   readonly auditRetentionDays = Number(process.env.OPS_AUDIT_RETENTION_DAYS || 90);
+  readonly identityEnabled = process.env.OPS_IDENTITY_ENABLED === '1';
+  readonly identityAdminBaseUrl = process.env.OPS_IDENTITY_ADMIN_BASE_URL || '';
+  readonly identityRealm = process.env.OPS_IDENTITY_REALM || 'lb-map';
+  readonly identityAdminUsername = process.env.OPS_IDENTITY_ADMIN_USERNAME || '';
+  readonly identityAdminPassword = process.env.OPS_IDENTITY_ADMIN_PASSWORD || '';
+  readonly entitlementIntrospectionToken =
+    process.env.OPS_ENTITLEMENT_INTROSPECTION_TOKEN || '';
+  readonly varlensProvisioningToken = process.env.OPS_VARLENS_PROVISIONING_TOKEN || '';
 
   target(app: TargetApp, environment: TargetEnvironment): TargetConfig {
     if (app !== 'varlens') {

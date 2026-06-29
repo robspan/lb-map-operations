@@ -129,5 +129,30 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS ops_audit_events_occurred_at_idx
       ON ops_audit_events(occurred_at DESC)
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ops_app_entitlements (
+        id BIGSERIAL PRIMARY KEY,
+        subject TEXT NOT NULL,
+        username TEXT,
+        app TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'active', 'revoked')),
+        resource_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (resource_status IN ('pending', 'active', 'failed', 'revoked')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_by TEXT
+      )
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS ops_app_entitlements_subject_app_env_idx
+      ON ops_app_entitlements(subject, app, environment)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS ops_app_entitlements_app_env_status_idx
+      ON ops_app_entitlements(app, environment, status, resource_status)
+    `);
   }
 }

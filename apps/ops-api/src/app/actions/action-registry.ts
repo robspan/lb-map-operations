@@ -134,7 +134,7 @@ const varlensInitialPasswordInput: ActionInputDefinition = {
   label: 'Initiales Passwort',
   type: 'text',
   required: true,
-  pattern: '^.{8,256}$',
+  pattern: '^.{12,256}$',
   maxLength: 256,
   sensitive: true,
 };

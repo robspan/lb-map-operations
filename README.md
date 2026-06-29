@@ -1,6 +1,6 @@
 # LB-MAP Operations
 
-Internal first-level and operator UI for LB-MAP. The service exposes curated
+Internal first-level and admin UI for LB-MAP. The service exposes curated
 operations runbooks through an Angular Material UI and NestJS API. It is not a
 shell, Makefile, kubectl, OpenTofu, or repository command runner.
 
@@ -13,7 +13,7 @@ shell, Makefile, kubectl, OpenTofu, or repository command runner.
 ## Safety Boundary
 
 V1 actions are allowlisted in code. First-level support gets diagnostic actions
-only. Operator/admin roles get the same diagnostics plus non-prune ArgoCD sync,
+only. Admin roles get the same diagnostics plus non-prune ArgoCD sync,
 guarded stateless rollout restart, and smoke-job trigger.
 
 The tool deliberately excludes delete/down/prune, restore, database mutation,
@@ -31,7 +31,6 @@ The API trusts identity headers from the platform ingress/OIDC layer:
 Group-to-role mappings are configured by:
 
 - `OPS_FIRST_LEVEL_GROUPS`
-- `OPS_OPERATOR_GROUPS`
 - `OPS_ADMIN_GROUPS`
 
 Local mock identity is disabled unless `OPS_DEV_AUTH_USER` is set and
@@ -53,7 +52,7 @@ Local API with mock identity:
 
 ```sh
 OPS_DEV_AUTH_USER=local-operator \
-OPS_DEV_AUTH_GROUPS=lb-map-operator \
+OPS_DEV_AUTH_GROUPS=lb-map-admin \
 npm run serve:api
 ```
 
