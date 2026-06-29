@@ -55,7 +55,7 @@ export class OpsConfigService {
   readonly devAuthEmail = process.env.OPS_DEV_AUTH_EMAIL || '';
   readonly devAuthGroups = splitCsv(process.env.OPS_DEV_AUTH_GROUPS || '');
   readonly bootstrapUsername = process.env.OPS_BOOTSTRAP_USERNAME || '';
-  readonly bootstrapPasswordHash = process.env.OPS_BOOTSTRAP_PASSWORD_HASH || '';
+  readonly bootstrapPasswordHash = (process.env.OPS_BOOTSTRAP_PASSWORD_HASH || '').trim();
   readonly bootstrapDisplayName = process.env.OPS_BOOTSTRAP_DISPLAY_NAME || '';
   readonly bootstrapEmail = process.env.OPS_BOOTSTRAP_EMAIL || '';
   readonly bootstrapRole = process.env.OPS_BOOTSTRAP_ROLE || 'admin';

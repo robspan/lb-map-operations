@@ -1,14 +1,10 @@
 import { OpsConfigService } from './ops-config.service';
 
 describe('ops config service', () => {
-  const originalTargetEnvironment = process.env.OPS_TARGET_ENVIRONMENT;
+  const originalEnv = { ...process.env };
 
   afterEach(() => {
-    if (originalTargetEnvironment === undefined) {
-      delete process.env.OPS_TARGET_ENVIRONMENT;
-    } else {
-      process.env.OPS_TARGET_ENVIRONMENT = originalTargetEnvironment;
-    }
+    process.env = { ...originalEnv };
   });
 
   it('defaults this deployment to the test target', () => {
@@ -39,5 +35,16 @@ describe('ops config service', () => {
     expect(() => new OpsConfigService()).toThrow(
       'OPS_TARGET_ENVIRONMENT must be dev, test, or prod.',
     );
+  });
+
+  it('normalizes trailing newlines in the bootstrap password hash', () => {
+    process.env = {
+      ...originalEnv,
+      OPS_BOOTSTRAP_PASSWORD_HASH: 'argon-hash\n',
+    };
+
+    const service = new OpsConfigService();
+
+    expect(service.bootstrapPasswordHash).toBe('argon-hash');
   });
 });
