@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { randomBytes, createHash } from 'node:crypto';
 import { OpsPrincipal, OpsRole } from '@lb-map-operations/ops-contract';
 import { OpsConfigService } from '../config/ops-config.service';
@@ -40,7 +40,7 @@ export class AuthService implements OnModuleInit {
     if (!this.db.enabled()) {
       return;
     }
-    await this.bootstrapFirstUser();
+    await this.reconcileBootstrapUser();
   }
 
   async authenticate(username: string, password: string): Promise<OpsPrincipal | null> {
@@ -150,6 +150,9 @@ export class AuthService implements OnModuleInit {
   }
 
   async setUserActive(username: string, active: boolean): Promise<UserSummary> {
+    if (!active && this.isBootstrapUser(username)) {
+      throw new BadRequestException('bootstrap user is managed by OPS_BOOTSTRAP_*');
+    }
     const result = await this.db.query<OpsUserRecord>(
       `
         UPDATE ops_users
@@ -172,6 +175,9 @@ export class AuthService implements OnModuleInit {
   }
 
   async resetPassword(username: string, password: string): Promise<UserSummary> {
+    if (this.isBootstrapUser(username)) {
+      throw new BadRequestException('bootstrap user password is managed by OPS_BOOTSTRAP_*');
+    }
     const passwordHash = await hashPassword(password);
     const result = await this.db.query<OpsUserRecord>(
       `
@@ -195,16 +201,78 @@ export class AuthService implements OnModuleInit {
     return summarizeUser(result.rows[0]);
   }
 
-  private async bootstrapFirstUser(): Promise<void> {
-    const existing = await this.db.query<{ count: string }>('SELECT count(*)::text AS count FROM ops_users');
-    if (Number(existing.rows[0]?.count || 0) > 0) {
-      return;
-    }
+  private async reconcileBootstrapUser(): Promise<void> {
     if (!this.config.bootstrapUsername || !this.config.bootstrapPasswordHash) {
-      this.logger.warn('No OPS_BOOTSTRAP_* user configured and ops_users is empty');
+      const existing = await this.db.query<{ count: string }>('SELECT count(*)::text AS count FROM ops_users');
+      if (Number(existing.rows[0]?.count || 0) === 0) {
+        this.logger.warn('No OPS_BOOTSTRAP_* user configured and ops_users is empty');
+      }
       return;
     }
     const role = parseRole(this.config.bootstrapRole);
+    const displayName = this.config.bootstrapDisplayName || this.config.bootstrapUsername;
+    const email = this.config.bootstrapEmail || null;
+    const existing = await this.db.query<
+      OpsUserRecord & { password_hash: string }
+    >(
+      `
+        SELECT id::text, username, display_name, email, password_hash, role,
+               active, must_change_password
+        FROM ops_users
+        WHERE username = $1
+      `,
+      [this.config.bootstrapUsername],
+    );
+
+    const user = existing.rows[0];
+    if (user) {
+      const needsReconcile =
+        user.display_name !== displayName ||
+        user.email !== email ||
+        user.password_hash !== this.config.bootstrapPasswordHash ||
+        user.role !== role ||
+        !user.active ||
+        user.must_change_password;
+      if (!needsReconcile) {
+        return;
+      }
+      await this.db.query(
+        `
+          UPDATE ops_users
+          SET display_name = $2,
+              email = $3,
+              password_hash = $4,
+              role = $5,
+              active = TRUE,
+              must_change_password = FALSE,
+              password_changed_at = CASE
+                WHEN password_hash <> $4 THEN now()
+                ELSE password_changed_at
+              END,
+              updated_at = now()
+          WHERE username = $1
+        `,
+        [
+          this.config.bootstrapUsername,
+          displayName,
+          email,
+          this.config.bootstrapPasswordHash,
+          role,
+        ],
+      );
+      await this.db.query(
+        'DELETE FROM ops_sessions WHERE user_id = (SELECT id FROM ops_users WHERE username = $1)',
+        [this.config.bootstrapUsername],
+      );
+      await this.audit.record({
+        actor: this.config.bootstrapUsername,
+        role,
+        action: 'auth-bootstrap-reconcile',
+        result: 'success',
+      });
+      return;
+    }
+
     await this.db.query(
       `
         INSERT INTO ops_users
@@ -213,8 +281,8 @@ export class AuthService implements OnModuleInit {
       `,
       [
         this.config.bootstrapUsername,
-        this.config.bootstrapDisplayName || this.config.bootstrapUsername,
-        this.config.bootstrapEmail || null,
+        displayName,
+        email,
         this.config.bootstrapPasswordHash,
         role,
       ],
@@ -225,6 +293,14 @@ export class AuthService implements OnModuleInit {
       action: 'auth-bootstrap',
       result: 'success',
     });
+  }
+
+  private isBootstrapUser(username: string): boolean {
+    return Boolean(
+      this.config.bootstrapUsername &&
+        this.config.bootstrapPasswordHash &&
+        username === this.config.bootstrapUsername,
+    );
   }
 
   private async userByUsername(username: string): Promise<OpsUserRecord> {
