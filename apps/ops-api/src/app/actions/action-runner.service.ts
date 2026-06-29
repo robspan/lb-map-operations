@@ -290,12 +290,14 @@ if [ -z "$control_url" ]; then
   echo '{"ok":false,"error":"control database URL missing"}' >&2
   exit 1
 fi
-VARLENS_PG_URL="$control_url" node out/web/provision-user.cjs \
-  --username "$VARLENS_OPS_USERNAME" \
-  --display-name "$VARLENS_OPS_DISPLAY_NAME" \
-  --created-by "$VARLENS_OPS_CREATED_BY" \
-  --password-file /var/run/varlens/ops-user/password \
-  --private-db-secret-ref "$VARLENS_OPS_SECRET_REF"
+if [ "\${VARLENS_OPS_SKIP_CONTROL_USER:-0}" != "1" ]; then
+  VARLENS_PG_URL="$control_url" node out/web/provision-user.cjs \
+    --username "$VARLENS_OPS_USERNAME" \
+    --display-name "$VARLENS_OPS_DISPLAY_NAME" \
+    --created-by "$VARLENS_OPS_CREATED_BY" \
+    --password-file /var/run/varlens/ops-user/password \
+    --private-db-secret-ref "$VARLENS_OPS_SECRET_REF"
+fi
 
 node <<'NODE'
 const { Client } = require('pg')
@@ -1233,6 +1235,9 @@ export class ActionRunnerService {
           secretEnv(credentialSecret, 'VARLENS_OPS_MIGRATOR_PASSWORD', 'migratorPassword'),
           secretEnv(credentialSecret, 'VARLENS_OPS_APP_PASSWORD', 'appPassword'),
           { name: 'VARLENS_OPS_SECRET_REF', value: plan.secretRef },
+          ...(this.config.identityEnabled
+            ? [{ name: 'VARLENS_OPS_SKIP_CONTROL_USER', value: '1' }]
+            : []),
         ],
         secretName: credentialSecret,
         script: VARLENS_USER_CREATE_SCRIPT,
@@ -1277,10 +1282,11 @@ export class ActionRunnerService {
     principal: OpsPrincipal,
   ): Promise<ActionOutput> {
     const username = validateVarLensUsername(inputs.username);
-    await this.assertVarLensLifecycleUser(target, username);
     const platformUser = this.config.identityEnabled
       ? await this.keycloak.setUserEnabled(username, false, principal.user)
       : undefined;
+    const lifecycleUsername = platformUser?.subject ?? username;
+    await this.assertVarLensLifecycleUser(target, lifecycleUsername);
     if (platformUser !== undefined) {
       await this.revokeEntitlementIfPresent(target, platformUser.subject, principal.user);
       const plan = varlensUserDbPlan(username);
@@ -1299,7 +1305,7 @@ export class ActionRunnerService {
       operation: 'block',
       username,
       actor: principal.user,
-      env: [{ name: 'VARLENS_OPS_USERNAME', value: username }],
+      env: [{ name: 'VARLENS_OPS_USERNAME', value: lifecycleUsername }],
       script: VARLENS_USER_BLOCK_SCRIPT,
     });
     const job = await this.waitForLifecycleJob(target, jobName, 60_000);
@@ -1327,13 +1333,17 @@ export class ActionRunnerService {
     principal: OpsPrincipal,
   ): Promise<ActionOutput> {
     const username = validateVarLensUsername(inputs.username);
+    const platformUser = this.config.identityEnabled
+      ? await this.keycloak.subjectForUsername(username)
+      : undefined;
+    const lifecycleUsername = platformUser?.subject ?? username;
     const jobName = lifecycleJobName('unblock', username);
     await this.createVarLensLifecycleJob(target, {
       jobName,
       operation: 'unblock',
       username,
       actor: principal.user,
-      env: [{ name: 'VARLENS_OPS_USERNAME', value: username }],
+      env: [{ name: 'VARLENS_OPS_USERNAME', value: lifecycleUsername }],
       script: VARLENS_USER_UNBLOCK_SCRIPT,
     });
     const job = await this.waitForLifecycleJob(target, jobName, 60_000);
@@ -1342,10 +1352,8 @@ export class ActionRunnerService {
       throw new Error(`Entsperr-Job ${jobName} ist fehlgeschlagen.`);
     }
     const plan = varlensUserDbPlan(username);
-    const platformUser = this.config.identityEnabled
-      ? await this.keycloak.setUserEnabled(username, true, principal.user)
-      : undefined;
     if (platformUser !== undefined) {
+      await this.keycloak.setUserEnabled(username, true, principal.user);
       await this.varlensProvisioning.upsertPlatformUser({
         subject: platformUser.subject,
         displayName: username,
@@ -1390,10 +1398,11 @@ export class ActionRunnerService {
       );
     }
     const plan = varlensUserDbPlan(username);
-    await this.assertVarLensLifecycleUser(target, username);
     const platformUser = this.config.identityEnabled
       ? await this.keycloak.setUserEnabled(username, false, principal.user)
       : undefined;
+    const lifecycleUsername = platformUser?.subject ?? username;
+    await this.assertVarLensLifecycleUser(target, lifecycleUsername);
     if (platformUser !== undefined) {
       await this.revokeEntitlementIfPresent(target, platformUser.subject, principal.user);
       await this.varlensProvisioning.upsertPlatformUser({
@@ -1412,7 +1421,7 @@ export class ActionRunnerService {
       username,
       actor: principal.user,
       env: [
-        { name: 'VARLENS_OPS_USERNAME', value: username },
+        { name: 'VARLENS_OPS_USERNAME', value: lifecycleUsername },
         { name: 'VARLENS_OPS_DB_NAME', value: plan.dbName },
         { name: 'VARLENS_OPS_OWNER_ROLE', value: plan.ownerRole },
         { name: 'VARLENS_OPS_MIGRATOR_ROLE', value: plan.migratorRole },
