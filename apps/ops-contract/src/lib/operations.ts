@@ -213,6 +213,41 @@ export interface VarLensUsersResponse {
   readonly users: readonly VarLensUserSummary[];
 }
 
+export type AppEntitlementStatus = 'pending' | 'active' | 'revoked';
+export type AppResourceStatus = 'pending' | 'active' | 'failed' | 'revoked';
+
+export interface AppEntitlementSummary {
+  readonly id: string;
+  readonly subject: string;
+  readonly username?: string;
+  readonly app: TargetApp;
+  readonly environment: TargetEnvironment;
+  readonly role: string;
+  readonly status: AppEntitlementStatus;
+  readonly resourceStatus: AppResourceStatus;
+  readonly active: boolean;
+  readonly updatedAt: string;
+}
+
+export interface AppEntitlementDecision {
+  readonly active: boolean;
+  readonly subject: string;
+  readonly app: TargetApp;
+  readonly environment: TargetEnvironment;
+  readonly role?: string;
+  readonly status?: AppEntitlementStatus;
+  readonly resourceStatus?: AppResourceStatus;
+  readonly reason?: 'not-found' | 'inactive-entitlement' | 'inactive-resource';
+}
+
+export interface AppEntitlementsResponse {
+  readonly entitlements: readonly AppEntitlementSummary[];
+}
+
+export interface AppEntitlementDecisionResponse {
+  readonly entitlement: AppEntitlementDecision;
+}
+
 export interface SuggestedRemedy {
   readonly remedyId: string;
   readonly title: string;

@@ -39,7 +39,10 @@ import type {
   DiagnosisFacts,
   EndpointProbe,
 } from '../diagnosis/diagnosis-rules';
+import { EntitlementsService } from '../identity/entitlements.service';
 import { IdentityService } from '../identity/identity.service';
+import { KeycloakAdminService } from '../identity/keycloak-admin.service';
+import { VarLensProvisioningService } from '../identity/varlens-provisioning.service';
 import { MetricsService } from '../observability/metrics.service';
 import { normalizeActionInputs } from './action-inputs';
 import { actionById } from './action-registry';
@@ -484,12 +487,15 @@ export class ActionRunnerService {
     private readonly audit: AuditService,
     private readonly config: OpsConfigService,
     private readonly contracts: AppContractsService,
+    private readonly entitlements: EntitlementsService,
     private readonly identity: IdentityService,
+    private readonly keycloak: KeycloakAdminService,
     private readonly kubernetes: KubernetesClient,
     private readonly loki: LokiClient,
     private readonly metrics: MetricsService,
     private readonly prometheus: PrometheusClient,
     private readonly store: RunStoreService,
+    private readonly varlensProvisioning: VarLensProvisioningService,
   ) {}
 
   async run(
@@ -1162,8 +1168,11 @@ export class ActionRunnerService {
       inputs.initialPassword,
       'initialPassword',
     );
-    if (initialPassword.length < 8) {
+    if (initialPassword.length < 12) {
       throw new BadRequestException('Initiales Passwort ist zu kurz.');
+    }
+    if (this.config.identityEnabled) {
+      await this.keycloak.ensureUserDoesNotExist(username);
     }
 
     const plan = varlensUserDbPlan(username);
@@ -1199,6 +1208,9 @@ export class ActionRunnerService {
       {
         password: initialPassword,
         privateMigratorUrl: migratorUrl,
+        ownerPassword,
+        migratorPassword,
+        appPassword,
       },
       varlensUserJobLabels(target, username, 'create'),
     );
@@ -1217,9 +1229,9 @@ export class ActionRunnerService {
           { name: 'VARLENS_OPS_OWNER_ROLE', value: plan.ownerRole },
           { name: 'VARLENS_OPS_MIGRATOR_ROLE', value: plan.migratorRole },
           { name: 'VARLENS_OPS_APP_ROLE', value: plan.appRole },
-          { name: 'VARLENS_OPS_OWNER_PASSWORD', value: ownerPassword },
-          { name: 'VARLENS_OPS_MIGRATOR_PASSWORD', value: migratorPassword },
-          { name: 'VARLENS_OPS_APP_PASSWORD', value: appPassword },
+          secretEnv(credentialSecret, 'VARLENS_OPS_OWNER_PASSWORD', 'ownerPassword'),
+          secretEnv(credentialSecret, 'VARLENS_OPS_MIGRATOR_PASSWORD', 'migratorPassword'),
+          secretEnv(credentialSecret, 'VARLENS_OPS_APP_PASSWORD', 'appPassword'),
           { name: 'VARLENS_OPS_SECRET_REF', value: plan.secretRef },
         ],
         secretName: credentialSecret,
@@ -1234,13 +1246,27 @@ export class ActionRunnerService {
       await this.kubernetes.deleteJob(target.namespace, jobName);
     }
 
+    const platformUser = this.config.identityEnabled
+      ? await this.provisionPlatformIdentityForVarLensUser(
+          target,
+          username,
+          displayName,
+          initialPassword,
+          plan.secretRef,
+          principal.user,
+        )
+      : undefined;
+
     return {
-      summary: `VarLens-Nutzer ${username} wurde mit eigener Workspace-Datenbank angelegt.`,
+      summary: `VarLens-Nutzer ${username} wurde mit MFA-Onboarding und eigener Workspace-Datenbank angelegt.`,
       evidence: [
         { label: 'Benutzer', value: username },
+        ...(platformUser !== undefined
+          ? [{ label: 'Platform Subject', value: platformUser.subject }]
+          : []),
         { label: 'Name', value: displayName },
         { label: 'Workspace-Datenbank', value: plan.dbName },
-        { label: 'Status', value: 'aktiv; Passwortwechsel beim ersten Login' },
+        { label: 'Status', value: 'aktiv; Passwortwechsel und TOTP beim ersten Login' },
       ],
     };
   }
@@ -1251,6 +1277,22 @@ export class ActionRunnerService {
     principal: OpsPrincipal,
   ): Promise<ActionOutput> {
     const username = validateVarLensUsername(inputs.username);
+    await this.assertVarLensLifecycleUser(target, username);
+    const platformUser = this.config.identityEnabled
+      ? await this.keycloak.setUserEnabled(username, false, principal.user)
+      : undefined;
+    if (platformUser !== undefined) {
+      await this.revokeEntitlementIfPresent(target, platformUser.subject, principal.user);
+      const plan = varlensUserDbPlan(username);
+      await this.varlensProvisioning.upsertPlatformUser({
+        subject: platformUser.subject,
+        displayName: username,
+        role: 'user',
+        environment: target.environment,
+        privateDbSecretRef: plan.secretRef,
+        resourceStatus: 'revoked',
+      });
+    }
     const jobName = lifecycleJobName('block', username);
     await this.createVarLensLifecycleJob(target, {
       jobName,
@@ -1269,8 +1311,12 @@ export class ActionRunnerService {
       summary: `VarLens-Nutzer ${username} wurde gesperrt.`,
       evidence: [
         { label: 'Benutzer', value: username },
+        ...(platformUser !== undefined
+          ? [{ label: 'Platform Subject', value: platformUser.subject }]
+          : []),
         { label: 'Login', value: 'gesperrt' },
         { label: 'Workspace-Zuordnung', value: 'disabled' },
+        { label: 'Entitlement', value: 'revoked' },
       ],
     };
   }
@@ -1295,12 +1341,39 @@ export class ActionRunnerService {
     if (job.status?.failed) {
       throw new Error(`Entsperr-Job ${jobName} ist fehlgeschlagen.`);
     }
+    const plan = varlensUserDbPlan(username);
+    const platformUser = this.config.identityEnabled
+      ? await this.keycloak.setUserEnabled(username, true, principal.user)
+      : undefined;
+    if (platformUser !== undefined) {
+      await this.varlensProvisioning.upsertPlatformUser({
+        subject: platformUser.subject,
+        displayName: username,
+        role: 'user',
+        environment: target.environment,
+        privateDbSecretRef: plan.secretRef,
+        resourceStatus: 'active',
+      });
+      await this.entitlements.grant({
+        subject: platformUser.subject,
+        username,
+        app: target.app,
+        environment: target.environment,
+        role: 'user',
+        resourceStatus: 'active',
+        actor: principal.user,
+      });
+    }
     return {
       summary: `VarLens-Nutzer ${username} wurde entsperrt.`,
       evidence: [
         { label: 'Benutzer', value: username },
+        ...(platformUser !== undefined
+          ? [{ label: 'Platform Subject', value: platformUser.subject }]
+          : []),
         { label: 'Login', value: 'aktiv' },
         { label: 'Workspace-Zuordnung', value: 'active' },
+        { label: 'Entitlement', value: 'active' },
       ],
     };
   }
@@ -1317,6 +1390,21 @@ export class ActionRunnerService {
       );
     }
     const plan = varlensUserDbPlan(username);
+    await this.assertVarLensLifecycleUser(target, username);
+    const platformUser = this.config.identityEnabled
+      ? await this.keycloak.setUserEnabled(username, false, principal.user)
+      : undefined;
+    if (platformUser !== undefined) {
+      await this.revokeEntitlementIfPresent(target, platformUser.subject, principal.user);
+      await this.varlensProvisioning.upsertPlatformUser({
+        subject: platformUser.subject,
+        displayName: username,
+        role: 'user',
+        environment: target.environment,
+        privateDbSecretRef: plan.secretRef,
+        resourceStatus: 'revoked',
+      });
+    }
     const jobName = lifecycleJobName('prune', username);
     await this.createVarLensLifecycleJob(target, {
       jobName,
@@ -1346,16 +1434,107 @@ export class ActionRunnerService {
         data: { [plan.secretRef]: null },
       },
     );
+    if (platformUser !== undefined) {
+      await this.keycloak.deleteUser(username, principal.user);
+    }
 
     return {
       summary: `VarLens-Nutzer ${username} und dessen Workspace-Datenbank wurden entfernt.`,
       evidence: [
         { label: 'Benutzer', value: username },
+        ...(platformUser !== undefined
+          ? [{ label: 'Platform Subject', value: platformUser.subject }]
+          : []),
         { label: 'Workspace-Datenbank', value: plan.dbName },
         { label: 'Workspace-Secret', value: plan.secretName },
         { label: 'Umfang', value: 'operational prune; keine Infra-Löschung' },
       ],
     };
+  }
+
+  private async revokeEntitlementIfPresent(
+    target: TargetConfig,
+    subject: string,
+    actor: string,
+  ): Promise<void> {
+    try {
+      await this.entitlements.revoke({
+        subject,
+        app: target.app,
+        environment: target.environment,
+        actor,
+      });
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+    }
+  }
+
+  private async provisionPlatformIdentityForVarLensUser(
+    target: TargetConfig,
+    username: string,
+    displayName: string,
+    initialPassword: string,
+    privateDbSecretRef: string,
+    actor: string,
+  ): Promise<{ readonly subject: string; readonly username: string }> {
+    const platformUser = await this.keycloak.createOrResetUser({
+      username,
+      displayName,
+      temporaryPassword: initialPassword,
+      actor,
+    });
+    await this.varlensProvisioning.upsertPlatformUser({
+      subject: platformUser.subject,
+      displayName,
+      role: 'user',
+      environment: target.environment,
+      privateDbSecretRef,
+      resourceStatus: 'active',
+    });
+    await this.entitlements.grant({
+      subject: platformUser.subject,
+      username,
+      app: target.app,
+      environment: target.environment,
+      role: 'user',
+      resourceStatus: 'active',
+      actor,
+    });
+    return platformUser;
+  }
+
+  private async assertVarLensLifecycleUser(
+    target: TargetConfig,
+    username: string,
+  ): Promise<void> {
+    const secret = await this.kubernetes.getPath<KubernetesSecretLike>(
+      `/api/v1/namespaces/${target.namespace}/secrets/varlens-postgres-app`,
+    );
+    const encodedUri = secret.data?.uri;
+    if (!encodedUri) {
+      throw new Error('VarLens control database URL is not configured.');
+    }
+    const client = new Client({
+      connectionString: Buffer.from(encodedUri, 'base64').toString('utf8'),
+    });
+    await client.connect();
+    try {
+      const result = await client.query<{ role: string }>(
+        'SELECT role FROM public.users WHERE username = $1',
+        [username],
+      );
+      const role = result.rows[0]?.role;
+      if (!role) {
+        throw new NotFoundException(`VarLens-Nutzer ${username} wurde nicht gefunden.`);
+      }
+      if (role === 'admin') {
+        throw new BadRequestException('Admin-Nutzer sind fuer diese Aktion gesperrt.');
+      }
+    } finally {
+      await client.end();
+    }
   }
 
   private async createVarLensLifecycleJob(
@@ -1461,6 +1640,9 @@ export class ActionRunnerService {
     while (!isFinishedJob(latest) && Date.now() < deadline) {
       await sleep(1_000);
       latest = await this.kubernetes.job(target, jobName);
+    }
+    if (!latest.status?.succeeded) {
+      throw new Error(`Lifecycle job ${jobName} did not complete successfully before timeout.`);
     }
     return latest;
   }
@@ -2545,7 +2727,7 @@ function validateRequired(value: string | undefined, name: string): string {
 }
 
 function validateVarLensUsername(value: string | undefined): string {
-  const username = validateRequired(value, 'username');
+  const username = validateRequired(value, 'username').toLowerCase();
   if (!/^[A-Za-z0-9._@+-]{1,100}$/.test(username)) {
     throw new BadRequestException('VarLens-Benutzername ist ungültig.');
   }
@@ -2702,4 +2884,17 @@ function varlensRuntimeEnv(
     });
   }
   return env;
+}
+
+function secretEnv(
+  secretName: string,
+  name: string,
+  key: string,
+): Record<string, unknown> {
+  return {
+    name,
+    valueFrom: {
+      secretKeyRef: { name: secretName, key },
+    },
+  };
 }
