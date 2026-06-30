@@ -45,8 +45,12 @@ import { KeycloakAdminService } from '../identity/keycloak-admin.service';
 import { VarLensProvisioningService } from '../identity/varlens-provisioning.service';
 import { MetricsService } from '../observability/metrics.service';
 import { normalizeActionInputs } from './action-inputs';
-import { actionById } from './action-registry';
+import { actionById, isOperatorVisibleAction } from './action-registry';
 import { RunStoreService } from './run-store.service';
+import {
+  summarizeVarLensUserRows,
+  VarLensUserRow,
+} from './varlens-user-summaries';
 
 type PodLike = {
   readonly metadata?: {
@@ -507,6 +511,9 @@ export class ActionRunnerService {
   ): Promise<ActionRunResult> {
     const action = actionById(actionId);
     if (!action) {
+      throw new NotFoundException(`unknown action: ${actionId}`);
+    }
+    if (!isOperatorVisibleAction(actionId)) {
       throw new NotFoundException(`unknown action: ${actionId}`);
     }
     if (!roleAllows(principal.roles, action.role)) {
@@ -1052,13 +1059,7 @@ export class ActionRunnerService {
     });
     await client.connect();
     try {
-      const result = await client.query<{
-        username: string;
-        display_name: string | null;
-        role: string;
-        is_active: boolean;
-        private_db_status: string | null;
-      }>(
+      const result = await client.query<VarLensUserRow>(
         `
           SELECT username, display_name, role, is_active, private_db_status
           FROM public.users
@@ -1066,13 +1067,14 @@ export class ActionRunnerService {
           ORDER BY username ASC
         `,
       );
-      return result.rows.map((row) => ({
-        username: row.username,
-        displayName: row.display_name || row.username,
-        role: row.role,
-        active: row.is_active,
-        privateDbStatus: row.private_db_status || undefined,
-      }));
+      const usernameBySubject = this.config.identityEnabled
+        ? await this.entitlements.usernamesBySubject(
+            targetApp,
+            targetEnvironment,
+            result.rows.map((row) => row.username),
+          )
+        : new Map<string, string>();
+      return summarizeVarLensUserRows(result.rows, usernameBySubject);
     } finally {
       await client.end();
     }

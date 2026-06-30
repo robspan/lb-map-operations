@@ -24,7 +24,7 @@ import { DiagnosePanel } from './diagnose-panel';
 import { InfoButton } from './info-button';
 import { OpsApiService, OpsAuditEvent, OpsUserSummary } from './ops-api.service';
 
-type OpsView = 'diagnose' | 'app-varlens' | 'platform' | 'users' | 'audit';
+type OpsView = 'diagnose' | 'app-varlens' | 'users' | 'audit';
 
 /** German role labels for the toolbar chips. */
 const ROLE_LABELS: Record<OpsRole, string> = {
@@ -70,8 +70,6 @@ const ACTION_HELP: Record<string, string> = {
     'Fasst die standardisierten Metriken, Logs und Dashboards aus dem App-Vertrag zusammen.',
   'escalation-bundle':
     'Bündelt Status, Pods, Events und ArgoCD-Zustand in einem Paket – ideal zum Anhängen an eine Eskalation an die interne IT.',
-  'argo-sync':
-    'Löst einen ArgoCD-Sync ohne Prune aus, um den Soll-Zustand aus Git erneut anzuwenden. Eingriff – verändert die Live-Umgebung.',
   'varlens-user-create':
     'Legt einen normalen VarLens-Nutzer mit eigener Workspace-Datenbank an. Rollen werden nicht bearbeitet.',
   'varlens-user-block':
@@ -80,8 +78,6 @@ const ACTION_HELP: Record<string, string> = {
     'Entsperrt den VarLens-Login und aktiviert die Workspace-Datenbank-Zuordnung wieder.',
   'varlens-user-prune':
     'Entfernt genau diesen VarLens-Nutzer und dessen abgeleitete Workspace-Datenbank. Das ist keine Infra-Löschung.',
-  'rollout-restart':
-    'Startet das Deployment rollierend über eine Annotation neu (ohne Datenverlust). Eingriff – verändert die Live-Umgebung.',
 };
 
 /** Per-input explanations for the inline action forms. */
@@ -170,7 +166,6 @@ export class App implements OnInit {
   diagnostics: OperationAction[] = [];
   mutations: OperationAction[] = [];
   userMutations: OperationAction[] = [];
-  platformMutations: OperationAction[] = [];
   inputs: Record<string, Record<string, string>> = {};
   private readonly actionTitles: Record<string, string> = {};
 
@@ -227,9 +222,6 @@ export class App implements OnInit {
         this.mutations = actions.actions.filter((action) => action.kind === 'mutation');
         this.userMutations = this.mutations.filter((action) =>
           action.id.startsWith('varlens-user-')
-        );
-        this.platformMutations = this.mutations.filter(
-          (action) => !action.id.startsWith('varlens-user-')
         );
         for (const action of actions.actions) {
           this.actionTitles[action.id] = action.title;
@@ -594,12 +586,6 @@ export class App implements OnInit {
 
   runningActionDurationHint(): string {
     const actionId = this.runningActionId;
-    if (actionId === 'argo-sync') {
-      return 'GitOps-Abgleich läuft. Meist 30 bis 120 Sekunden.';
-    }
-    if (actionId === 'rollout-restart') {
-      return 'App-Neustart läuft. Meist 30 bis 90 Sekunden.';
-    }
     if (actionId.startsWith('varlens-user-')) {
       return 'Nutzeroperation läuft. Meist 10 bis 60 Sekunden.';
     }

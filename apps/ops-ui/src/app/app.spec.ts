@@ -28,16 +28,6 @@ const diagnosticWithConfig = {
   ],
 };
 
-const mutation = {
-  id: 'rollout-restart',
-  title: 'Stateless Restart',
-  description: 'Deployment neu starten.',
-  role: 'admin',
-  kind: 'mutation',
-  targetApp: 'varlens',
-  inputs: [],
-};
-
 const varlensUserMutation = {
   id: 'varlens-user-create',
   title: 'VarLens-Nutzer anlegen',
@@ -52,6 +42,16 @@ const varlensUserMutation = {
     { name: 'displayName', label: 'Name', type: 'text', required: true },
     { name: 'initialPassword', label: 'Initiales Passwort', type: 'text', required: true, sensitive: true },
   ],
+};
+
+const varlensConfirmMutation = {
+  id: 'varlens-user-reset-mfa',
+  title: 'VarLens MFA zurücksetzen',
+  description: 'MFA für einen VarLens-Nutzer zurücksetzen.',
+  role: 'admin',
+  kind: 'mutation',
+  targetApp: 'varlens',
+  inputs: [],
 };
 
 const varlensUserBlockMutation = {
@@ -94,7 +94,7 @@ describe('App', () => {
   function bootstrap(
     principal: unknown,
     actions: unknown[],
-    view: 'diagnose' | 'app-varlens' | 'platform' | 'users' | 'audit' = 'app-varlens'
+    view: 'diagnose' | 'app-varlens' | 'users' | 'audit' = 'app-varlens'
   ) {
     const fixture = TestBed.createComponent(App);
     // Set the active tab before the first change detection to keep the rendered state stable.
@@ -165,13 +165,13 @@ describe('App', () => {
     expect(nav).toBeTruthy();
     expect(nav?.textContent).toContain('Diagnose');
     expect(nav?.textContent).toContain('VarLens');
-    expect(nav?.textContent).toContain('Infrastruktur');
+    expect(nav?.textContent).not.toContain('Infrastruktur');
     expect(nav?.textContent).not.toContain('Operationen');
     expect(nav?.textContent).toContain('Operations-Konten');
     expect(nav?.textContent).toContain('Audit');
   });
 
-  it('renders the deployment target as read-only context', async () => {
+  it('renders the deployment target in the toolbar and removes the old target strip', async () => {
     const { fixture } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
       [diagnostic]
@@ -179,12 +179,16 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    const target = compiled.querySelector('.target');
+    const toolbar = compiled.querySelector('mat-toolbar');
+    const stage = compiled.querySelector('[data-testid="target-stage"]');
 
-    expect(target?.textContent).toContain('Stage');
-    expect(target?.textContent).toContain('Test');
-    expect(target?.querySelector('mat-select')).toBeNull();
-    expect(target?.textContent).not.toContain('Umgebung');
+    expect(compiled.querySelector('.target')).toBeNull();
+    expect(toolbar?.textContent).toContain('Test');
+    expect(toolbar?.textContent).toContain('VarLens');
+    expect(stage?.classList).toContain('stage-test');
+    expect(toolbar?.querySelector('mat-select')).toBeNull();
+    expect(toolbar?.textContent).not.toContain('Umgebung');
+    expect(toolbar?.textContent).toContain('Aktualisieren');
   });
 
   it('renders URL evidence as a link and long evidence as a log block', async () => {
@@ -397,8 +401,7 @@ describe('App', () => {
   it('should not run a mutation until it is confirmed', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
-      [mutation],
-      'platform'
+      [varlensConfirmMutation]
     );
     await fixture.whenStable();
     fixture.detectChanges();
@@ -408,7 +411,7 @@ describe('App', () => {
     fixture.detectChanges();
 
     // First click only arms the confirmation; no request is sent yet.
-    http.expectNone('/api/actions/rollout-restart/runs');
+    http.expectNone('/api/actions/varlens-user-reset-mfa/runs');
     const confirmButton = compiled.querySelector('[data-testid="confirm-action"]') as HTMLButtonElement;
     expect(confirmButton).toBeTruthy();
 
@@ -416,30 +419,33 @@ describe('App', () => {
     fixture.detectChanges();
 
     http
-      .expectOne('/api/actions/rollout-restart/runs')
+      .expectOne('/api/actions/varlens-user-reset-mfa/runs')
       .flush({
         run: {
           runId: 'r1',
-          actionId: 'rollout-restart',
+          actionId: 'varlens-user-reset-mfa',
           status: 'succeeded',
           startedAt: new Date().toISOString(),
           targetApp: 'varlens',
           targetEnvironment: 'test',
           actor: 'ops-admin',
           role: 'admin',
-          summary: 'Neustart angewendet.',
+          summary: 'MFA wurde zurückgesetzt.',
           evidence: [],
         },
       });
+    http
+      .expectOne('/api/apps/varlens/environments/test/varlens-users')
+      .flush({ users: [] });
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(compiled.textContent).toContain('Neustart angewendet.');
+    expect(compiled.textContent).toContain('MFA wurde zurückgesetzt.');
   });
 
-  it('renders VarLens app tools separately from infrastructure operations', async () => {
+  it('renders VarLens app tools without infrastructure operations', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },
-      [diagnostic, varlensUserMutation, mutation]
+      [diagnostic, varlensUserMutation]
     );
     await fixture.whenStable();
     fixture.detectChanges();
@@ -449,6 +455,8 @@ describe('App', () => {
     expect(compiled.textContent).toContain('VarLens-Nutzer anlegen');
     expect(compiled.textContent).toContain('Prüfen und Nachsehen');
     expect(compiled.textContent).not.toContain('Plattform-Eingriffe');
+    expect(compiled.textContent).not.toContain('Stateless Restart');
+    expect(compiled.textContent).not.toContain('ArgoCD Sync');
     const pageText = compiled.textContent || '';
     expect(pageText.indexOf('VarLens-Nutzer verwalten')).toBeLessThan(
       pageText.indexOf('Prüfen und Nachsehen')
@@ -460,22 +468,6 @@ describe('App', () => {
 
     http.expectNone('/api/actions/varlens-user-create/runs');
     expect(document.body.textContent).toContain('VarLens-Nutzer anlegen');
-  });
-
-  it('renders infrastructure operations on their own page', async () => {
-    const { fixture } = bootstrap(
-      { user: 'ops-admin', groups: [], roles: ['admin'] },
-      [diagnostic, varlensUserMutation, mutation],
-      'platform'
-    );
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-
-    expect(compiled.textContent).toContain('Plattform-Eingriffe');
-    expect(compiled.textContent).toContain('Stateless Restart');
-    expect(compiled.textContent).not.toContain('VarLens-Nutzer verwalten');
-    expect(compiled.textContent).not.toContain('Prüfen und Nachsehen');
   });
 
   it('loads VarLens users for lifecycle dropdowns and separates block from unblock choices', async () => {

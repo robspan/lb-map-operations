@@ -396,15 +396,23 @@ const FORBIDDEN_ACTION_FRAGMENTS = [
 ];
 
 const EXPLICIT_OPERATIONAL_PRUNE_ACTIONS = new Set(['varlens-user-prune']);
+const INTERNAL_AUTO_REPAIR_ACTIONS = new Set(['argo-sync', 'rollout-restart']);
 
 export function visibleActions(
   roles: readonly OpsRole[],
 ): readonly OperationAction[] {
-  return ACTIONS.filter((action) => roleAllows(roles, action.role));
+  return ACTIONS.filter(
+    (action) =>
+      roleAllows(roles, action.role) && !INTERNAL_AUTO_REPAIR_ACTIONS.has(action.id),
+  );
 }
 
 export function actionById(actionId: string): OperationAction | undefined {
   return ACTIONS.find((action) => action.id === actionId);
+}
+
+export function isOperatorVisibleAction(actionId: string): boolean {
+  return !INTERNAL_AUTO_REPAIR_ACTIONS.has(actionId);
 }
 
 export function assertSafeCatalog(

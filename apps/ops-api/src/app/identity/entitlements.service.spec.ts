@@ -92,6 +92,27 @@ describe('EntitlementsService', () => {
     );
   });
 
+  it('returns usernames keyed by subject for one app environment', async () => {
+    const db = {
+      query: jest.fn().mockResolvedValue({
+        rows: [
+          { subject: 'sub-1', username: 'alice' },
+          { subject: 'sub-2', username: null },
+        ],
+      }),
+    };
+    const service = new EntitlementsService({ record: jest.fn() } as never, db as never);
+
+    await expect(
+      service.usernamesBySubject('varlens', 'test', ['sub-1', 'sub-1', 'sub-2']),
+    ).resolves.toEqual(new Map([['sub-1', 'alice']]));
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('subject = ANY($3)'), [
+      'varlens',
+      'test',
+      ['sub-1', 'sub-2'],
+    ]);
+  });
+
   it('revokes entitlement and resource state together', async () => {
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const db = {

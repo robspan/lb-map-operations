@@ -1,5 +1,30 @@
 <mat-toolbar class="topbar">
   <span class="brand">LB-MAP Operations</span>
+  @if (!loadError) {
+    <span class="topbar-context" aria-label="Ziel">
+      <span
+        class="stage-chip"
+        data-testid="target-stage"
+        [class.stage-dev]="selectedEnvironment === 'dev'"
+        [class.stage-test]="selectedEnvironment === 'test'"
+        [class.stage-prod]="selectedEnvironment === 'prod'"
+      >
+        {{ stageLabel() }}
+      </span>
+      <span class="context-app" data-testid="target-app">
+        {{ activeView === 'app-varlens' ? appLabel() : 'Operations' }}
+      </span>
+    </span>
+    <button
+      mat-stroked-button
+      class="toolbar-refresh"
+      type="button"
+      (click)="load()"
+      [disabled]="!!runningActionId"
+    >
+      Aktualisieren
+    </button>
+  }
   <span class="spacer"></span>
   @if (actor) {
     <span class="actor">{{ actor }}</span>
@@ -66,15 +91,6 @@
           <button
             type="button"
             class="nav-item"
-            [class.active]="activeView === 'platform'"
-            [attr.aria-current]="activeView === 'platform' ? 'page' : null"
-            (click)="setView('platform')"
-          >
-            Infrastruktur
-          </button>
-          <button
-            type="button"
-            class="nav-item"
             [class.active]="activeView === 'users'"
             [attr.aria-current]="activeView === 'users' ? 'page' : null"
             (click)="setView('users')"
@@ -95,23 +111,6 @@
     }
 
     <div class="workspace">
-      <section class="target" aria-label="Ziel">
-        <div class="target-context">
-          <span class="target-label">Stage</span>
-          <strong>{{ stageLabel() }}</strong>
-        </div>
-        <div class="target-context">
-          <span class="target-label">Bereich</span>
-          <strong>{{ activeView === 'app-varlens' ? appLabel() : 'Operations' }}</strong>
-        </div>
-        <app-info [text]="uiHelp.target" />
-
-        <span class="spacer"></span>
-        <button mat-stroked-button type="button" (click)="load()" [disabled]="!!runningActionId">
-          Aktualisieren
-        </button>
-      </section>
-
       @if (runningActionId) {
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
       }
@@ -290,14 +289,9 @@
         </main>
       }
 
-      @if (
-        loaded &&
-        !loadError &&
-        isAdmin() &&
-        (activeView === 'app-varlens' || activeView === 'platform')
-      ) {
+      @if (loaded && !loadError && isAdmin() && activeView === 'app-varlens') {
         <main class="shell">
-          <section class="actions" [attr.aria-label]="activeView === 'app-varlens' ? 'VarLens' : 'Infrastruktur'">
+          <section class="actions" aria-label="VarLens">
             <ng-template #actionTile let-action>
               <article
                 class="action"
@@ -453,19 +447,6 @@
                   }
                 </header>
                 @for (action of userMutations; track action.id) {
-                  <ng-container *ngTemplateOutlet="actionTile; context: { $implicit: action }"></ng-container>
-                }
-              </section>
-            }
-
-            @if (activeView === 'platform' && platformMutations.length) {
-              <section class="group">
-                <header class="group-head">
-                  <h2>Plattform-Eingriffe</h2>
-                  <span class="group-note warn">verändert die Live-Umgebung</span>
-                  <app-info [text]="uiHelp.eingriffe" />
-                </header>
-                @for (action of platformMutations; track action.id) {
                   <ng-container *ngTemplateOutlet="actionTile; context: { $implicit: action }"></ng-container>
                 }
               </section>

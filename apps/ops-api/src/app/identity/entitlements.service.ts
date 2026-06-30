@@ -54,6 +54,34 @@ export class EntitlementsService {
     return result.rows.map(summarize);
   }
 
+  async usernamesBySubject(
+    app: TargetApp,
+    environment: TargetEnvironment,
+    subjects: readonly string[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const uniqueSubjects = [...new Set(subjects.filter(Boolean))];
+    if (!uniqueSubjects.length) {
+      return new Map();
+    }
+    const result = await this.db.query<Pick<EntitlementRecord, 'subject' | 'username'>>(
+      `
+        SELECT subject, username
+        FROM ops_app_entitlements
+        WHERE app = $1
+          AND environment = $2
+          AND subject = ANY($3)
+      `,
+      [app, environment, uniqueSubjects],
+    );
+    return new Map(
+      result.rows
+        .filter((row): row is { readonly subject: string; readonly username: string } =>
+          Boolean(row.username),
+        )
+        .map((row) => [row.subject, row.username]),
+    );
+  }
+
   async decision(params: {
     readonly subject: string;
     readonly app: TargetApp;

@@ -44,9 +44,15 @@ describe('action registry', () => {
   });
 
   it('shows the full catalog to admins', () => {
-    expect(visibleActions(['admin']).map((action) => action.id)).toEqual(
-      ACTIONS.map((action) => action.id),
+    const adminActions = visibleActions(['admin']).map((action) => action.id);
+
+    expect(adminActions).toEqual(
+      ACTIONS.map((action) => action.id).filter(
+        (actionId) => !['argo-sync', 'rollout-restart'].includes(actionId),
+      ),
     );
+    expect(adminActions).not.toContain('argo-sync');
+    expect(adminActions).not.toContain('rollout-restart');
   });
 
   it('advertises bounded action-specific inputs', () => {
