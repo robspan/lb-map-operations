@@ -274,6 +274,47 @@ describe('App', () => {
     expect(component.actionReady(action)).toBe(true);
   });
 
+  it('generates, reveals, and copies the VarLens initial password', async () => {
+    const { fixture } = bootstrap(
+      { user: 'ops-admin', groups: [], roles: ['admin'] },
+      [varlensUserMutation]
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const component = fixture.componentInstance;
+    const action = component.userMutations[0];
+    component.inputs['varlens-user-create']['username'] = 'lab-user';
+    component.inputs['varlens-user-create']['displayName'] = 'Lab User';
+
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (value: string) => {
+          copied.push(value);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    (compiled.querySelector('[data-testid="generate-initial-password"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const password = component.inputs['varlens-user-create']['initialPassword'];
+    expect(password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{20}$/);
+    expect(component.actionReady(action)).toBe(true);
+    const passwordInput = compiled.querySelector('[data-field="initialPassword"]') as HTMLInputElement;
+    expect(passwordInput.type).toBe('text');
+
+    (compiled.querySelector('[data-testid="toggle-initial-password"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(passwordInput.type).toBe('password');
+
+    (compiled.querySelector('[data-testid="copy-initial-password"]') as HTMLButtonElement).click();
+    expect(copied).toEqual([password]);
+  });
+
   it('renders the DB-backed user administration table for admins', async () => {
     const { fixture, http } = bootstrap(
       { user: 'ops-admin', groups: [], roles: ['admin'] },

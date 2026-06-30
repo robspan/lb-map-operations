@@ -374,9 +374,26 @@
   align-items: center;
   gap: 2px;
 }
+.action-inputs .field.password-field {
+  grid-column: span 2;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .action-inputs mat-form-field {
   flex: 1 1 auto;
   width: 100%;
+}
+.password-field mat-form-field {
+  min-width: 260px;
+}
+.password-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.password-tools button {
+  min-height: 40px;
 }
 
 .results {

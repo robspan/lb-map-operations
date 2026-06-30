@@ -367,7 +367,10 @@
                 @if (showInputs(action)) {
                   <div class="action-inputs">
                     @for (input of actionSpecificInputs(action); track input.name) {
-                      <div class="field">
+                      <div
+                        class="field"
+                        [class.password-field]="isGeneratedPasswordInput(input)"
+                      >
                         <mat-form-field appearance="outline" subscriptSizing="dynamic">
                           <mat-label>{{ input.label }}</mat-label>
                           @if (input.type === 'select') {
@@ -382,7 +385,11 @@
                           } @else {
                             <input
                               matInput
-                              [type]="input.sensitive ? 'password' : 'text'"
+                              [type]="
+                                input.sensitive && !sensitiveInputVisible(action.id, input.name)
+                                  ? 'password'
+                                  : 'text'
+                              "
                               [(ngModel)]="inputs[action.id][input.name]"
                               [attr.data-field]="input.name"
                               [maxlength]="input.maxLength || 200"
@@ -390,6 +397,39 @@
                             />
                           }
                         </mat-form-field>
+                        @if (isGeneratedPasswordInput(input)) {
+                          <div class="password-tools" aria-label="Passwort-Werkzeuge">
+                            <button
+                              mat-stroked-button
+                              type="button"
+                              data-testid="generate-initial-password"
+                              (click)="generateInitialPassword(action.id, input.name)"
+                            >
+                              Generieren
+                            </button>
+                            <button
+                              mat-stroked-button
+                              type="button"
+                              data-testid="toggle-initial-password"
+                              (click)="toggleSensitiveInput(action.id, input.name)"
+                            >
+                              {{
+                                sensitiveInputVisible(action.id, input.name)
+                                  ? 'Verbergen'
+                                  : 'Anzeigen'
+                              }}
+                            </button>
+                            <button
+                              mat-stroked-button
+                              type="button"
+                              data-testid="copy-initial-password"
+                              [disabled]="!inputs[action.id][input.name]"
+                              (click)="copyActionInput(action.id, input.name)"
+                            >
+                              Kopieren
+                            </button>
+                          </div>
+                        }
                         @if (inputHelp(input.name)) {
                           <app-info [text]="inputHelp(input.name)" />
                         }

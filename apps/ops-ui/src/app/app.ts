@@ -160,6 +160,7 @@ export class App implements OnInit {
   activeView: OpsView = 'diagnose';
   /** Actions whose optional inline parameters are currently revealed. */
   private readonly openOptions = new Set<string>();
+  private readonly visibleSensitiveInputs = new Set<string>();
 
   actor = '';
   roles: readonly OpsRole[] = [];
@@ -461,6 +462,48 @@ export class App implements OnInit {
     return INPUT_HELP[name] || '';
   }
 
+  isGeneratedPasswordInput(input: ActionInputDefinition): boolean {
+    return input.name === 'initialPassword' && input.sensitive === true;
+  }
+
+  sensitiveInputVisible(actionId: string, inputName: string): boolean {
+    return this.visibleSensitiveInputs.has(this.sensitiveInputKey(actionId, inputName));
+  }
+
+  toggleSensitiveInput(actionId: string, inputName: string): void {
+    const key = this.sensitiveInputKey(actionId, inputName);
+    if (this.visibleSensitiveInputs.has(key)) {
+      this.visibleSensitiveInputs.delete(key);
+    } else {
+      this.visibleSensitiveInputs.add(key);
+    }
+  }
+
+  generateInitialPassword(actionId: string, inputName: string): void {
+    this.inputs[actionId][inputName] = this.randomInitialPassword();
+    this.visibleSensitiveInputs.add(this.sensitiveInputKey(actionId, inputName));
+  }
+
+  copyActionInput(actionId: string, inputName: string): void {
+    const value = this.inputs[actionId]?.[inputName] || '';
+    if (!value) {
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(value);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+
   inputOptions(action: OperationAction, input: ActionInputDefinition): readonly SelectOption[] {
     if (input.optionsSource === 'varlens-users') {
       return this.varlensUserOptions(action);
@@ -644,6 +687,37 @@ export class App implements OnInit {
     return this.actionSpecificInputs(action).some(
       (input) => input.required && !String(values[input.name] || '').trim()
     );
+  }
+
+  private sensitiveInputKey(actionId: string, inputName: string): string {
+    return `${actionId}:${inputName}`;
+  }
+
+  private randomInitialPassword(): string {
+    const groups = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789'];
+    const pool = groups.join('');
+    const chars = groups.map((group) => this.randomChar(group));
+    while (chars.length < 20) {
+      chars.push(this.randomChar(pool));
+    }
+    return this.shuffle(chars).join('');
+  }
+
+  private randomChar(chars: string): string {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    return chars[values[0] % chars.length];
+  }
+
+  private shuffle(values: string[]): string[] {
+    const shuffled = [...values];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const random = new Uint32Array(1);
+      crypto.getRandomValues(random);
+      const swapIndex = random[0] % (index + 1);
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    return shuffled;
   }
 
   private hasVarLensUserSelector(): boolean {
