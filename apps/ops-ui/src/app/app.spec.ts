@@ -413,7 +413,10 @@ describe('App', () => {
     // First click only arms the confirmation; no request is sent yet.
     http.expectNone('/api/actions/varlens-user-reset-mfa/runs');
     const confirmButton = compiled.querySelector('[data-testid="confirm-action"]') as HTMLButtonElement;
+    const confirmBar = compiled.querySelector('[data-testid="confirm-bar"]');
     expect(confirmButton).toBeTruthy();
+    expect(confirmBar?.textContent).toContain('VarLens MFA zurücksetzen auf varlens/test ausführen?');
+    expect(compiled.querySelector('.action-cta .confirm-note')).toBeNull();
 
     confirmButton.click();
     fixture.detectChanges();

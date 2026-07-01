@@ -329,9 +329,6 @@
                         Starten
                       </button>
                     } @else if (confirmingActionId === action.id) {
-                      <span class="confirm-note">
-                        {{ action.title }} auf {{ selectedApp }}/{{ selectedEnvironment }} ausführen?
-                      </span>
                       <button mat-stroked-button type="button" (click)="cancel()">Abbrechen</button>
                       <button
                         mat-flat-button
@@ -357,6 +354,14 @@
                     }
                   </div>
                 </div>
+
+                @if (confirmingActionId === action.id) {
+                  <div class="confirm-bar" data-testid="confirm-bar" aria-live="polite">
+                    <span class="confirm-note">
+                      {{ action.title }} auf {{ selectedApp }}/{{ selectedEnvironment }} ausführen?
+                    </span>
+                  </div>
+                }
 
                 @if (showInputs(action)) {
                   <div class="action-inputs">
